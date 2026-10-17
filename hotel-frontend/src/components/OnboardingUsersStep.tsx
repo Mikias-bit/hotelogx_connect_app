@@ -20,6 +20,15 @@ export function OnboardingUsersStep() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("front-office");
 
+  const [sending, setSending] = useState(false);
+  const submitInvite = async (targetEmail = email, targetRole = role) => {
+    if (sending || !isEmailish(targetEmail)) return;
+    setSending(true);
+    try {
+      if (await addOnboardingInvite(targetEmail.trim().toLowerCase(), targetRole)) setEmail("");
+    } finally { setSending(false); }
+  };
+
   const domain = profile.website || "yourhotel.com";
   const duplicate = invites.some((i) => i.email === email.trim().toLowerCase());
 
@@ -35,9 +44,8 @@ export function OnboardingUsersStep() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && isEmailish(email) && !duplicate) {
-                  addOnboardingInvite(email.trim().toLowerCase(), role);
-                  setEmail("");
+                if (e.key === "Enter" && isEmailish(email) && !duplicate && !sending) {
+                  void submitInvite();
                 }
               }}
               placeholder={`colleague@${domain}`}
@@ -60,13 +68,12 @@ export function OnboardingUsersStep() {
           </label>
           <Button
             icon={UserPlus}
-            disabled={!isEmailish(email) || duplicate}
+            disabled={!isEmailish(email) || duplicate || sending}
             onClick={() => {
-              addOnboardingInvite(email.trim().toLowerCase(), role);
-              setEmail("");
+              void submitInvite();
             }}
           >
-            Invite
+            {sending ? "Sending..." : "Invite"}
           </Button>
         </div>
         <p className="mt-2 text-[11.5px] leading-snug text-ink-4">{roleAccess[role]}.</p>
@@ -88,6 +95,7 @@ export function OnboardingUsersStep() {
                       <MessageCircle className="size-3" /> WhatsApp
                     </Badge>
                   )}
+                  <Button size="sm" variant="ghost" disabled={sending} onClick={() => { void submitInvite(invite.email, invite.role); }}>Resend</Button>
                   <Button size="sm" variant="ghost" icon={Trash2} onClick={() => removeOnboardingInvite(invite.email)} />
                 </li>
               ))}

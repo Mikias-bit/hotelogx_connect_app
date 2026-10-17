@@ -82,6 +82,18 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
   }
 }
 
+async function invitationRequest<T>(path: string, body: unknown): Promise<T> {
+  const token = await getOrRefreshToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.success) throw new Error(result?.message || 'Invitation failed. Please sign in again or check the hotel mailbox.');
+  return result.data;
+}
+
 export const api = {
   // Rooms
   getRooms: () => request<any[]>('/rooms'),
@@ -236,10 +248,10 @@ export const api = {
       body: JSON.stringify({ topology }),
     }),
   saveOnboardingStep: (stepKey: string, data?: any) =>
-    request('/onboarding/step', {
+    (stepKey === 'users' && data?.email ? invitationRequest('/onboarding/step', { stepKey, data }) : request('/onboarding/step', {
       method: 'POST',
       body: JSON.stringify({ stepKey, data }),
-    }),
+    })),
   completeOnboarding: () =>
     request('/onboarding/complete', {
       method: 'POST',
@@ -247,10 +259,7 @@ export const api = {
   // Users & Staff
   getUsers: () => request<any[]>('/users'),
   inviteUser: (data: { email: string; role: string; name?: string; title?: string; phone?: string; whatsapp?: boolean }) =>
-    request<any>('/users/invite', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    invitationRequest<any>('/users/invite', data),
   updateUserRole: (id: string, role: string) =>
     request<any>(`/users/${id}/role`, {
       method: 'PUT',

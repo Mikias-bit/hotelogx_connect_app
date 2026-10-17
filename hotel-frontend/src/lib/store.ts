@@ -1116,7 +1116,12 @@ export function updateHotelProfile(patch: Partial<HotelProfile>) {
 }
 
 export async function inviteStaffUser(data: { email: string; role: Role; name?: string; title?: string; phone?: string; whatsapp?: boolean }) {
-  const res = await api.inviteUser(data);
+  let res;
+  try { res = await api.inviteUser(data); }
+  catch (error) {
+    toast("Invitation failed", "urgent", error instanceof Error ? error.message : "Could not send invitation");
+    return false;
+  }
   if (res) {
     set((s) => ({
       users: [...s.users.filter((u) => u.email !== res.email), res],
@@ -1126,7 +1131,7 @@ export async function inviteStaffUser(data: { email: string; role: Role; name?: 
         done: { ...s.onboarding.done, users: true },
       },
     }));
-    toast("Invitation sent", "good", `${res.email} · ${res.role}`);
+    toast("Invitation submitted", "good", `${res.email} · ${res.role}`);
     return true;
   } else {
     toast("Invitation failed", "urgent", "Could not invite user");
@@ -1680,16 +1685,19 @@ export function testWhatsApp(connectionType: WaConnectionType) {
   toast("Test message delivered", "good", connectionType === "guest" ? "Sent to your own number" : "Sent to the duty manager");
 }
 
-export function addOnboardingInvite(email: string, role: Role) {
-  set((s) => ({
-    onboarding: {
-      ...s.onboarding,
-      invites: [...s.onboarding.invites, { email, role }],
+export async function addOnboardingInvite(email: string, role: Role): Promise<boolean> {
+  try {
+    await api.saveOnboardingStep("users", { email, role });
+    set((s) => ({ onboarding: { ...s.onboarding,
+      invites: [...s.onboarding.invites.filter(i => i.email !== email), { email, role }],
       done: { ...s.onboarding.done, users: true },
-    },
-  }));
-  api.saveOnboardingStep("users", { email, role });
-  toast("Invitation sent", "good", email);
+    } }));
+    toast("Invitation submitted", "good", "The email provider accepted the invitation. Check the recipient's inbox or spam folder.");
+    return true;
+  } catch (error) {
+    toast("Invitation failed", "urgent", error instanceof Error ? error.message : "Could not send invitation");
+    return false;
+  }
 }
 
 export function removeOnboardingInvite(email: string) {
