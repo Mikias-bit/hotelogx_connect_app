@@ -1103,7 +1103,12 @@ export function toggleWhatsApp() {
   toast(store.state.integrations.whatsapp.connected ? "WhatsApp connected" : "WhatsApp disconnected", store.state.integrations.whatsapp.connected ? "good" : "urgent");
 }
 
-export function updateHotelProfile(patch: Partial<HotelProfile>) {
+export async function updateHotelProfile(patch: Partial<HotelProfile>): Promise<boolean> {
+  try { await api.saveHotelProfile(patch); }
+  catch (error) {
+    toast("Could not save profile", "urgent", error instanceof Error ? error.message : "Please sign in and try again.");
+    return false;
+  }
   set((s) => ({
     hotelProfile: { ...s.hotelProfile, ...patch },
     onboarding: {
@@ -1111,8 +1116,7 @@ export function updateHotelProfile(patch: Partial<HotelProfile>) {
       done: { ...s.onboarding.done, profile: true },
     },
   }));
-  api.saveHotelProfile(patch);
-  toast("Hotel profile saved", "good", "The AI uses these details when it answers guests");
+  return true;
 }
 
 export async function inviteStaffUser(data: { email: string; role: Role; name?: string; title?: string; phone?: string; whatsapp?: boolean }) {

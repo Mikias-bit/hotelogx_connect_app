@@ -1,7 +1,6 @@
 import { Store, useStore } from "@tanstack/react-store";
 import { api } from "./api";
-import { staff } from "./data";
-import { initBackendSync, resetStoreState, store } from "./store";
+import { initBackendSync, resetStoreState } from "./store";
 import type { Role, StaffUser } from "./types";
 
 const KEY = "hotelogx.session.v1";
@@ -17,27 +16,7 @@ export const sessionStore = new Store<SessionState>({ userId: null, user: null, 
 
 export async function hydrateSession() {
   if (typeof window === "undefined") return;
-  const storedId = window.localStorage.getItem(KEY);
-  let cachedUser: StaffUser | null = null;
-  try {
-    const raw = window.localStorage.getItem(USER_KEY);
-    if (raw) cachedUser = JSON.parse(raw);
-  } catch {}
-
-  const demoUser = storedId ? staff.find((u) => u.id === storedId) : undefined;
-  const initialUser = cachedUser || demoUser || null;
-
-  let token = window.localStorage.getItem("token");
-  if (!token && (cachedUser?.email || demoUser)) {
-    try {
-      const res = await api.login({ email: cachedUser?.email || demoUser?.email, userId: cachedUser?.id || demoUser?.id });
-      if (res?.token) {
-        window.localStorage.setItem("token", res.token);
-        token = res.token;
-      }
-    } catch {}
-  }
-
+  const token = window.localStorage.getItem("token");
   if (token) {
     try {
       const meRes = await api.getMe();
@@ -63,37 +42,26 @@ export async function hydrateSession() {
     } catch {}
   }
 
-  sessionStore.setState(() => ({ userId: storedId ?? initialUser?.id ?? null, user: initialUser, ready: true }));
+  window.localStorage.removeItem(KEY);
+  window.localStorage.removeItem(USER_KEY);
+  sessionStore.setState(() => ({ userId: null, user: null, ready: true }));
 }
 
 export async function signIn(userId: string, customUser?: StaffUser) {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(KEY, userId);
-    if (customUser) {
-      window.localStorage.setItem(USER_KEY, JSON.stringify(customUser));
-    }
+  if (typeof window === "undefined" || !window.localStorage.getItem("token") || !customUser || customUser.id !== userId) {
+    throw new Error("Please sign in with your email and password.");
   }
+  window.localStorage.setItem(KEY, userId);
+  window.localStorage.setItem(USER_KEY, JSON.stringify(customUser));
+  sessionStore.setState(() => ({ userId, user: customUser, ready: true }));
+  initBackendSync();
+}
 
-  const demoFound = staff.find((u) => u.id === userId);
-  const existingToken = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-  if (!existingToken && demoFound) {
-    try {
-      const res = await api.login({ email: demoFound.email, password: "123456" });
-      if (res?.token && typeof window !== "undefined") {
-        window.localStorage.setItem("token", res.token);
-      }
-    } catch (e) {
-      console.warn("Backend auth token sync skipped:", e);
-    }
-  }
-
-  sessionStore.setState(() => ({ userId, user: customUser || demoFound || null, ready: true }));
-
-  try {
-    if (typeof initBackendSync === "function") {
-      initBackendSync();
-    }
-  } catch {}
+// API failures clear authentication immediately; cached display data is not a session.
+if (typeof window !== "undefined") {
+  window.addEventListener("hotelogx:session-expired", () => {
+    sessionStore.setState(() => ({ userId: null, user: null, ready: true }));
+  });
 }
 
 export function signOut() {
@@ -157,8 +125,7 @@ export function useSession() {
 export function useCurrentUser(): StaffUser | null {
   const { userId, user } = useStore(sessionStore, (s) => s);
   if (!userId) return null;
-  const storeUser = store.state.users.find((u) => u.id === userId || u.email === userId);
-  return storeUser ?? user ?? staff.find((u) => u.id === userId) ?? null;
+  return user;
 }
 
 export const roleHome: Record<Role, string> = {

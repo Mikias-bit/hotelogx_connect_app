@@ -207,8 +207,7 @@ function HotelProfilePanel() {
     });
 
   const handleSave = async () => {
-    updateHotelProfile(draft);
-    await api.saveHotelProfile(draft).catch(() => {});
+    if (!await updateHotelProfile(draft)) return;
     toast("Hotel profile saved", "good", "Settings updated");
   };
 

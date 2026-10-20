@@ -1,0 +1,9 @@
+﻿.git
+node_modules
+.env
+.env.*
+.migration-backup
+storage
+scratch
+client_secret*.json
+*.log

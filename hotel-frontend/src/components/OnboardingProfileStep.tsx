@@ -51,7 +51,11 @@ export function OnboardingProfileStep({ onDraftChange }: { onDraftChange?: (draf
     setSaving(true);
     try {
       // If user is not yet authenticated, register and create the hotel tenant
-      if (!currentUser && (!window.localStorage.getItem("token") || !profile.id)) {
+      if (!window.localStorage.getItem("token") || !currentUser) {
+        if (currentUser || !managerPassword.trim()) {
+          toast("Manager sign-in required", "urgent", "For an existing hotel, sign in on the login page. For a new hotel, enter the manager account details below.");
+          return;
+        }
         if (!managerEmail.trim() || !managerPassword.trim()) {
           toast("Manager credentials required", "urgent", "Please provide a Manager Email and Password to create your hotel account");
           setSaving(false);
@@ -83,16 +87,14 @@ export function OnboardingProfileStep({ onDraftChange }: { onDraftChange?: (draf
             name: draft.name || regRes.hotel?.name || "My Hotel",
           };
           setDraft(updatedDraft);
-          updateHotelProfile(updatedDraft);
-          await api.saveHotelProfile(updatedDraft).catch(() => {});
+          if (!await updateHotelProfile(updatedDraft)) return;
           toast("Hotel account created & profile saved", "good", `Welcome, ${regRes.user.name}`);
           setSavedSuccess(true);
         } else {
           toast("Registration error", "urgent", (regRes as any)?.message || "Could not create hotel workspace");
         }
       } else {
-        updateHotelProfile(draft);
-        await api.saveHotelProfile(draft).catch(() => {});
+        if (!await updateHotelProfile(draft)) return;
         toast("Hotel profile saved", "good", "The AI uses these details when answering guests");
         setSavedSuccess(true);
       }
@@ -105,6 +107,9 @@ export function OnboardingProfileStep({ onDraftChange }: { onDraftChange?: (draf
 
   return (
     <div className="space-y-4">
+      <p className="text-[12px] text-ink-3">
+        Already created your hotel? <a href="/login" className="underline">Sign in to your existing manager account</a> before saving.
+      </p>
       {/* Manager Account Section */}
       <Card>
         <div className="flex items-center gap-2">

@@ -11,8 +11,8 @@ import { OnboardingProfileStep } from "./OnboardingProfileStep";
 import { OnboardingUsersStep } from "./OnboardingUsersStep";
 import { OnboardingWhatsAppStep } from "./OnboardingWhatsAppStep";
 import { onboardingSteps, stepsForTopology, waTopologyOptions } from "@/lib/onboarding";
-import { completeOnboarding, markOnboardingStep, setWaTopology, store, updateHotelProfile, useApp } from "@/lib/store";
-import { roleHome, signIn, useCurrentUser } from "@/lib/session";
+import { completeOnboarding, markOnboardingStep, setWaTopology, store, toast, updateHotelProfile, useApp } from "@/lib/store";
+import { roleHome, useCurrentUser } from "@/lib/session";
 import type { HotelProfile, OnboardingStepKey, Role, StaffUser, WaTopology } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -74,10 +74,14 @@ export function OnboardingWizard() {
   const index = open ? steps.findIndex((s) => s.key === open) : -1;
   const current = index >= 0 ? steps[index] : null;
 
-  const advance = (mark: boolean) => {
+  const advance = async (mark: boolean) => {
     if (!current) return;
-    if (current.key === "profile" && profileDraft) {
-      updateHotelProfile(profileDraft);
+    if (current.key === "profile") {
+      if (!user || !window.localStorage.getItem("token") || !onboarding.done.profile) {
+        toast("Save your manager account and profile first", "urgent", "Use the profile save button above, or sign in to your existing hotel account.");
+        return;
+      }
+      if (mark && profileDraft && !await updateHotelProfile(profileDraft)) return;
     }
     if (mark) markOnboardingStep(current.key);
     const next = steps[index + 1];
@@ -190,11 +194,7 @@ export function OnboardingWizard() {
               onClick={async () => {
                 completeOnboarding();
                 const invitedUsers = store.state.users as StaffUser[];
-                const newManager = invitedUsers.find((u: StaffUser) => u.role === "manager") || invitedUsers[invitedUsers.length - 1];
-                if (newManager) {
-                  await signIn(newManager.id, newManager);
-                }
-                const activeUser = newManager || user;
+                const activeUser = user;
                 if (!activeUser || (typeof window !== "undefined" && !window.localStorage.getItem("token"))) {
                   navigate({ to: "/login" });
                   return;
@@ -325,9 +325,6 @@ export function OnboardingWizard() {
                 icon={ArrowLeft}
                 disabled={index === 0}
                 onClick={() => {
-                  if (current.key === "profile" && profileDraft) {
-                    updateHotelProfile(profileDraft);
-                  }
                   const prev = steps[index - 1];
                   if (prev) setOpen(prev.key);
                 }}

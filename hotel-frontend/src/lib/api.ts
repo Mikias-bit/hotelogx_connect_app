@@ -8,7 +8,18 @@ async function getOrRefreshToken(): Promise<string | null> {
   return localStorage.getItem('token');
 }
 
+function expireSession() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('token');
+  localStorage.removeItem('hotelogx.session.v1');
+  localStorage.removeItem('hotelogx.user.v1');
+  window.dispatchEvent(new Event('hotelogx:session-expired'));
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
+  const strict = endpoint === '/auth/login' || endpoint === '/auth/register' ||
+    endpoint.startsWith('/email/oauth/google?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
+  const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
     const url = `${API_BASE_URL}${endpoint}`;
     const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
@@ -24,6 +35,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
       }
     }
 
+    if (strict && !publicAuth && !headers['Authorization']) {
+      expireSession();
+      throw new Error('Please sign in to your hotel manager account before saving or connecting Gmail.');
+    }
     const res = await fetch(url, {
       ...options,
       headers,
@@ -31,7 +46,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
 
     if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh')) {
       const currentToken = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-      if (currentToken) {
+      const sentToken = headers['Authorization']?.replace(/^Bearer /, '') || null;
+      if (currentToken && currentToken === sentToken) {
         try {
           const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
             method: 'POST',
@@ -41,7 +57,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
           if (refreshRes.ok) {
             const json = await refreshRes.json();
             const freshToken = json?.data?.token || json?.token;
-            if (freshToken) {
+            if (freshToken && localStorage.getItem('token') === currentToken) {
               localStorage.setItem('token', freshToken);
               return request<T>(
                 endpoint,
@@ -59,17 +75,23 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
         } catch { }
       }
       if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('token');
+        if (currentToken === sentToken && localStorage.getItem('token') === currentToken) expireSession();
       }
     }
 
     if (!res.ok) {
       if (res.status === 401) {
         if (typeof localStorage !== 'undefined') {
-          localStorage.removeItem('token');
+          if (!publicAuth && headers['Authorization'] === `Bearer ${localStorage.getItem('token')}`) expireSession();
         }
       } else {
         console.warn(`API request to ${endpoint} returned status ${res.status}`);
+      }
+      if (strict) {
+        const failure = await res.json().catch(() => null);
+        throw new Error(res.status === 401 && !publicAuth
+          ? 'Your session has expired. Please sign in again.'
+          : failure?.message || `Request failed (${res.status}). Please try again.`);
       }
       return null;
     }
@@ -77,6 +99,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
     const json = await res.json();
     return json.data !== undefined ? json.data : json;
   } catch (err) {
+    if (strict) throw err;
     console.warn(`API request to ${endpoint} failed (backend might be offline, using local store):`, err);
     return null;
   }
