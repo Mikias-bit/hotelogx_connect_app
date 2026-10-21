@@ -1,3 +1,4 @@
+import { microsoftSubscriptions } from './microsoft/runtime.js';
 import { gmailWatchService, withGmailMailboxLock } from './gmail/runtime.js';
 import { emailService } from './emailService.js';
 import { gmailClient } from './gmailClient.js';
@@ -95,6 +96,7 @@ export const googleOAuthCallbackController = async (req, res) => {
       const sameMailbox = existing?.provider === 'google' && existing.email.toLowerCase() === emailAddress;
       if (!tokens.refreshToken && !(sameMailbox && existing.refreshToken)) throw new Error('Google did not provide offline access; reconnect with consent');
       if (existing?.provider === 'google' && !sameMailbox) await gmailWatchService.stopUnlocked(existing);
+      if (existing?.provider === 'microsoft') await microsoftSubscriptions.stopUnlocked(existing);
       let steps = [];
       try { steps = JSON.parse(hotel.onboardingSteps || '[]'); } catch {}
       if (!steps.includes('email')) steps.push('email');
@@ -105,6 +107,7 @@ export const googleOAuthCallbackController = async (req, res) => {
           tokenExpiry: new Date(Date.now() + tokens.expiresIn * 1000), scope: tokens.scope,
           // Reauthorization must not skip a failed or pending history batch.
           historyId: sameMailbox ? existing.historyId : String(profile.historyId),
+          lastDeltaLink: null, graphSubscriptionId: null, graphClientState: null, microsoftConnectedAt: null,
           watchExpiresAt: sameMailbox ? existing.watchExpiresAt : null,
           watchError: null, status: 'connected', lastError: null,
           ...(!sameMailbox ? { lastSyncAt: null, imapHost: null, smtpHost: null } : {}),
@@ -372,19 +375,7 @@ export const syncGmailController = async (req, res) => {
  */
 export const initiateMicrosoftOAuthController = async (req, res) => {
   try {
-    let hotelId = req.user?.hotelId || req.query.hotelId || req.headers['x-hotel-id'];
-    if (!hotelId && req.headers.authorization?.startsWith('Bearer ')) {
-      try {
-        const decoded = verifyToken(req.headers.authorization.split(' ')[1]);
-        if (decoded?.hotelId) hotelId = decoded.hotelId;
-      } catch (_) {}
-    }
-    if (!hotelId && req.query.token) {
-      try {
-        const decoded = verifyToken(req.query.token);
-        if (decoded?.hotelId) hotelId = decoded.hotelId;
-      } catch (_) {}
-    }
+    const hotelId = req.user?.hotelId;
     if (!hotelId) {
       return errorResponse(res, 'Authentication and hotel context required', 401);
     }
@@ -433,97 +424,49 @@ export const microsoftOAuthCallbackController = async (req, res) => {
   const { hotelId, redirectBack = '/onboarding' } = stateCheck.payload;
 
   try {
-    // 1. Exchange authorization code for Microsoft tokens
+    if (stateCheck.payload.purpose !== 'microsoft_oauth') throw new Error('Invalid OAuth purpose');
+    const hotel = await prisma.hotel.findUnique({ where: { id: hotelId } });
+    if (!hotel) throw new Error('OAuth hotel no longer exists');
+    const connectedAt = new Date();
     const tokens = await microsoftClient.exchangeCodeForTokens(code);
-
-    // 2. Fetch authenticated Microsoft profile (/me)
     const profile = await microsoftClient.getAuthenticatedMicrosoftProfile(tokens.accessToken);
-    const emailAddress = profile.mail || profile.userPrincipalName;
-
-    if (!emailAddress) {
-      throw new Error('Could not retrieve email address from Microsoft Graph /me profile');
-    }
-
-    // 3. Encrypt tokens before storing
-    const encryptedAccessToken = encryptToken(tokens.accessToken);
-    const encryptedRefreshToken = tokens.refreshToken ? encryptToken(tokens.refreshToken) : null;
-    const expiryDate = new Date(Date.now() + tokens.expiresIn * 1000);
-
-    // Automatic Re-linking: Clean up previous hotel binding for this email if linked elsewhere
-    await prisma.emailIntegration.deleteMany({
-      where: {
-        email: emailAddress,
-        hotelId: { not: hotelId },
-      },
-    }).catch(() => {});
-
-    // 4. Update / Upsert EmailIntegration record scoped strictly to hotelId
-    await prisma.emailIntegration.upsert({
-      where: { hotelId },
-      create: {
-        hotelId,
-        email: emailAddress,
-        provider: 'microsoft',
-        accessToken: encryptedAccessToken,
-        refreshToken: encryptedRefreshToken,
-        tokenExpiry: expiryDate,
-        scope: tokens.scope,
-        status: 'connected',
-      },
-      update: {
-        email: emailAddress,
-        provider: 'microsoft',
-        accessToken: encryptedAccessToken,
-        ...(encryptedRefreshToken ? { refreshToken: encryptedRefreshToken } : {}),
-        tokenExpiry: expiryDate,
-        scope: tokens.scope,
-        status: 'connected',
-        lastError: null,
-      },
-    });
-
-    // 5. Update Hotel table email & onboarding step
-    let hotel = await prisma.hotel.findUnique({ where: { id: hotelId } });
-    if (!hotel && hotelId === 'hotel-mercier') {
-      hotel = await prisma.hotel.findFirst();
-    }
-    if (hotel) {
-      let stepsDone = ['profile'];
-      if (hotel.onboardingSteps) {
-        try {
-          stepsDone = JSON.parse(hotel.onboardingSteps);
-        } catch {
-          stepsDone = ['profile'];
-        }
-      }
-      if (!stepsDone.includes('email')) {
-        stepsDone.push('email');
-      }
-      await prisma.hotel.update({
-        where: { id: hotel.id },
-        data: {
-          email: emailAddress,
-          onboardingSteps: JSON.stringify(stepsDone),
-        },
+    const emailAddress = (profile.mail || profile.userPrincipalName || '').trim().toLowerCase();
+    if (!emailAddress.includes('@')) throw new Error('Microsoft mailbox address missing');
+    let watchPending = false;
+    await withGmailMailboxLock(hotelId, async () => {
+      const other = await prisma.emailIntegration.findFirst({ where: { provider: 'microsoft', email: { equals: emailAddress, mode: 'insensitive' }, hotelId: { not: hotelId } } });
+      if (other) throw new Error('This Microsoft mailbox is already connected to another hotel. Disconnect it there first.');
+      const existing = await prisma.emailIntegration.findUnique({ where: { hotelId } });
+      const sameMailbox = existing?.provider === 'microsoft' && existing.email.toLowerCase() === emailAddress;
+      if (!tokens.refreshToken && !(sameMailbox && existing.refreshToken)) throw new Error('Microsoft offline access missing; reconnect with consent');
+      if (!sameMailbox && existing?.provider === 'google') await gmailWatchService.stopUnlocked(existing);
+      if (!sameMailbox && existing?.provider === 'microsoft') await microsoftSubscriptions.stopUnlocked(existing);
+      let steps = [];
+      try { steps = JSON.parse(hotel.onboardingSteps || '[]'); } catch {}
+      if (!steps.includes('email')) steps.push('email');
+      const saved = await prisma.$transaction(async tx => {
+        const data = { email: emailAddress, provider: 'microsoft', accessToken: encryptToken(tokens.accessToken),
+          refreshToken: tokens.refreshToken ? encryptToken(tokens.refreshToken) : existing.refreshToken,
+          tokenExpiry: new Date(Date.now() + tokens.expiresIn * 1000), scope: tokens.scope,
+          lastDeltaLink: sameMailbox ? existing.lastDeltaLink : null,
+          microsoftConnectedAt: sameMailbox ? existing.microsoftConnectedAt : connectedAt, microsoftRetryAt: null,
+          graphSubscriptionId: sameMailbox ? existing.graphSubscriptionId : null,
+          graphClientState: sameMailbox ? existing.graphClientState : null,
+          watchExpiresAt: sameMailbox ? existing.watchExpiresAt : null,
+          status: 'connected', watchError: null, lastError: null, historyId: null,
+          ...(!sameMailbox ? { lastSyncAt: null, imapHost: null, smtpHost: null } : {}) };
+        const row = await tx.emailIntegration.upsert({ where: { hotelId }, create: { hotelId, ...data }, update: data });
+        await tx.hotel.update({ where: { id: hotelId }, data: { email: emailAddress, onboardingSteps: JSON.stringify(steps) } });
+        await tx.onboardingState.upsert({ where: { hotelId }, create: { hotelId, emailDone: true }, update: { emailDone: true } });
+        return row;
       });
-    }
-
-    // 6. Log Activity Feed
-    await prisma.activityItem.create({
-      data: {
-        id: `act-${Date.now()}`,
-        hotelId,
-        at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-        kind: 'room',
-        text: `Microsoft 365 mailbox connected: ${emailAddress}`,
-        meta: 'Setup Wizard',
-      },
-    }).catch(() => {});
-
-    const targetUrl = redirectBack.startsWith('/') ? redirectBack : `/${redirectBack}`;
-    return res.redirect(`${frontendUrl}${targetUrl}?oauth_status=success&email=${encodeURIComponent(emailAddress)}&provider=microsoft`);
+      try { await microsoftSubscriptions.registerUnlocked(saved); } catch { watchPending = true; }
+    });
+    const targetUrl = typeof redirectBack === 'string' && redirectBack.startsWith('/') && !redirectBack.startsWith('//') ? redirectBack : '/onboarding';
+    const query = new URLSearchParams({ oauth_status: 'success', email: emailAddress, provider: 'microsoft', ...(watchPending ? { watch_status: 'pending' } : {}) });
+    return res.redirect(`${frontendUrl}${targetUrl}${targetUrl.includes('?') ? '&' : '?'}${query}`);
   } catch (err) {
-    console.error('[Microsoft OAuth Callback Error]:', err.message);
+    console.error('[Microsoft OAuth Callback] Failed', { type: err.constructor.name });
     return res.redirect(`${frontendUrl}/onboarding?oauth_status=error&message=${encodeURIComponent(err.message)}`);
   }
 };
@@ -557,7 +500,7 @@ export const testMicrosoftConnectionController = async (req, res) => {
       return errorResponse(res, 'Authentication and tenant context required', 401);
     }
     const result = await microsoftClient.testConnection(hotelId);
-    if (!result.ok) {
+    if (!result.success) {
       return errorResponse(res, result.error || 'Microsoft connection test failed', 400);
     }
     return successResponse(res, result, 'Microsoft connection verified successfully');
@@ -588,7 +531,7 @@ export const getEmailStatusController = async (req, res) => {
       watchExpiresAt: integration.watchExpiresAt,
       watchError: integration.watchError,
       lastError: integration.lastError,
-      ingestionReady: integration.provider !== 'google' || Boolean(integration.watchExpiresAt && integration.watchExpiresAt > new Date()),
+      ingestionReady: !['google', 'microsoft'].includes(integration.provider) || Boolean(integration.watchExpiresAt && integration.watchExpiresAt > new Date()),
     }, 'Email integration status fetched');
   } catch (error) {
     return errorResponse(res, error.message, 500);
@@ -608,6 +551,8 @@ export const disconnectEmailController = async (req, res) => {
     await withGmailMailboxLock(hotelId, async () => {
       const integration = await prisma.emailIntegration.findUnique({ where: { hotelId } });
       if (integration?.provider === 'google') await gmailWatchService.stopUnlocked(integration);
+      if (integration?.provider === 'microsoft') await microsoftSubscriptions.stopUnlocked(integration);
+      await prisma.microsoftSyncJob.deleteMany({ where: { hotelId } });
       await prisma.emailIntegration.deleteMany({ where: { hotelId } });
     });
     return successResponse(res, { disconnected: true }, 'Email integration disconnected successfully');

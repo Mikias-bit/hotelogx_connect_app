@@ -6,7 +6,6 @@ import { api } from "@/lib/api";
 import type { EmailServerSettings } from "@/lib/types";
 import { Badge, Button, Card, Eyebrow, SectionTitle } from "./ui";
 import { ConnectionHealth } from "./ConnectionHealth";
-import { OAuthConsent } from "./OAuthConsent";
 
 const providerMark: Record<string, string> = {
   google: "Google Workspace",
@@ -48,7 +47,6 @@ export function OnboardingEmailStep() {
 
   const [address, setAddress] = useState(email.address || `reception@${profile.website}`);
   const [busy, setBusy] = useState(false);
-  const [oauth, setOauth] = useState<"google" | "microsoft" | null>(null);
   const [password, setPassword] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [manual, setManual] = useState<EmailServerSettings>(email.settings ?? blankSettings);
@@ -64,13 +62,14 @@ export function OnboardingEmailStep() {
 
     if (oauthStatus === "success") {
       const emailAccount = urlParams.get("email") || address;
-      toast("Google Mailbox Connected", "good", `${emailAccount} · Google Workspace`);
-      connectEmail("oauth", null, undefined, emailAccount);
+      connectEmail("oauth", null, undefined, emailAccount).then((connected) => {
+        if (connected) toast("Mailbox connected", "good", emailAccount);
+      });
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
     } else if (oauthStatus === "error") {
-      const msg = urlParams.get("message") || "Google authorization failed";
-      toast("Could not connect Google mailbox", "urgent", decodeURIComponent(msg));
+      const msg = urlParams.get("message") || "Email authorization failed";
+      toast("Could not connect mailbox", "urgent", decodeURIComponent(msg));
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
     }
@@ -85,33 +84,16 @@ export function OnboardingEmailStep() {
   };
 
   const handleContinueWithOAuth = async (provider: "google" | "microsoft") => {
-    if (provider === "google") {
-      setBusy(true);
-      try {
-        let hotelId = profile.id;
-        if (!hotelId && typeof window !== "undefined") {
-          try {
-            const rawUser = window.localStorage.getItem("hotelogx.user.v1");
-            if (rawUser) {
-              const u = JSON.parse(rawUser);
-              if (u?.hotelId) hotelId = u.hotelId;
-            }
-          } catch {}
-        }
-        const res = await api.getGoogleOAuthUrl("/onboarding", hotelId || undefined);
-        if (res && res.url) {
-          window.location.href = res.url;
-          return;
-        } else {
-          toast("Google OAuth error", "urgent", "Could not generate Google authorization URL");
-          setBusy(false);
-        }
-      } catch (err: any) {
-        toast("Google OAuth error", "urgent", err?.message || "Please verify Google OAuth credentials on the server");
-        setBusy(false);
-      }
-    } else {
-      setOauth("microsoft");
+    setBusy(true);
+    try {
+      const result = provider === "microsoft"
+        ? await api.getMicrosoftOAuthUrl("/onboarding")
+        : await api.getGoogleOAuthUrl("/onboarding");
+      if (!result?.url) throw new Error('Could not generate authorization URL');
+      window.location.href = result.url;
+    } catch (err: any) {
+      toast("Email authorization failed", "urgent", err?.message || "Please try again");
+      setBusy(false);
     }
   };
 
@@ -380,18 +362,7 @@ export function OnboardingEmailStep() {
         )}
       </Card>
 
-      {oauth && (
-        <OAuthConsent
-          provider={oauth}
-          account={email.address}
-          scopes={["Read your mail", "Send mail on your behalf", "Reply inside existing threads"]}
-          onCancel={() => setOauth(null)}
-          onAllow={() => {
-            setOauth(null);
-            connectEmail("oauth");
-          }}
-        />
-      )}
+
     </>
   );
 }

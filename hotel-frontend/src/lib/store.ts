@@ -1546,8 +1546,22 @@ export async function runEmailDetection(address: string) {
 export async function connectEmail(method: EmailMethod, settings: EmailServerSettings | null = null, password?: string, overrideAddress?: string) {
   const detection = store.state.onboarding.email.detection;
   const address = overrideAddress || store.state.onboarding.email.address;
-  const provider: "google" | "microsoft" | "other" =
+  let provider: "google" | "microsoft" | "other" =
     method === "oauth" ? "google" : detection?.provider === "google" ? "google" : detection?.provider === "microsoft" ? "microsoft" : "other";
+
+  if (method === "oauth") {
+    try {
+      const status = await api.getEmailStatus();
+      if (!status?.connected || !status.email || status.email.toLowerCase() !== address.toLowerCase() || !['google', 'microsoft'].includes(status.provider || '')) {
+        failEmailConnection("Complete authorization for this hotel's mailbox first");
+        return false;
+      }
+      provider = status.provider as "google" | "microsoft";
+    } catch {
+      failEmailConnection("Could not verify the mailbox connection");
+      return false;
+    }
+  }
 
   if (method !== "oauth") {
     const host = settings?.imapHost;
@@ -1592,6 +1606,7 @@ export async function connectEmail(method: EmailMethod, settings: EmailServerSet
   }));
 
   api.saveOnboardingStep("email", { method, address: finalAccount, password, settings });
+  return true;
 }
 
 export function failEmailConnection(message: string) {

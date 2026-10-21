@@ -479,13 +479,16 @@ export const emailService = {
         });
         dispatched = Boolean(sendResult?.success);
       } else if (integration?.provider === 'microsoft' && integration?.accessToken) {
+        const inbound = conversationId ? await prisma.microsoftInboundMessage.findFirst({
+          where: { hotelId, mailbox: integration.email.toLowerCase(), conversationId }, orderBy: { receivedAt: 'desc' },
+        }) : null;
         sendResult = await microsoftClient.sendGuestMicrosoftMail({
           hotelId,
           to: toEmail,
           subject: subject || 'Message from Hotel Reception',
           bodyText: text,
           threadId,
-          messageId: threadId,
+          targetMessageId: inbound?.providerMessageId,
         });
         dispatched = Boolean(sendResult?.success);
       } else if ((integration?.provider === 'credentials' || integration?.provider === 'hostinger') && integration?.accessToken) {
@@ -508,7 +511,7 @@ export const emailService = {
       }
     } catch (sendErr) {
       console.warn(`[Email Send Warning for ${hotelId}]:`, sendErr.message);
-      if (process.env.NODE_ENV === 'test' || sendErr.message.includes('invalid authentication credentials') || sendErr.message.includes('Request had invalid authentication')) {
+      if (process.env.NODE_ENV === 'test') {
         dispatched = true;
       } else {
         throw sendErr;
@@ -568,53 +571,10 @@ export const emailService = {
   /**
    * Synchronize incoming guest emails from the hotel's authenticated Microsoft 365 inbox
    */
-  async syncHotelMicrosoftInbox(hotelId = 'hotel-mercier', maxResults = 10) {
-    if (!hotelId) {
-      throw new Error('hotelId is required for Microsoft sync');
-    }
-
-    const messages = await microsoftClient.fetchRecentMicrosoftMessages(hotelId, maxResults);
-    const processed = [];
-
-    for (const msg of messages) {
-      try {
-        // Idempotent duplicate check: verify deterministic Microsoft message ID
-        const deterministicId = `msg-ms-${msg.id}`;
-        const exists = await prisma.message.findUnique({
-          where: { id: deterministicId },
-        });
-
-        if (!exists) {
-          const result = await this.processInboundEmail({
-            messageId: `msg-ms-${msg.id}`,
-            from: msg.from,
-            to: msg.to,
-            subject: msg.subject,
-            text: msg.bodyText,
-            hotelId,
-          });
-          processed.push(result);
-        }
-      } catch (procErr) {
-        console.warn(`[Microsoft Sync Ingestion Warning]:`, procErr.message);
-      }
-    }
-
-    // Update last sync time
-    await prisma.emailIntegration.update({
-      where: { hotelId },
-      data: { lastSyncAt: new Date() },
-    }).catch(() => {});
-
-    return {
-      success: true,
-      provider: 'microsoft',
-      count: processed.length,
-      synced: processed.length,
-      skipped: messages.length - processed.length,
-      syncedAt: new Date().toISOString(),
-      messages: processed,
-    };
+  async syncHotelMicrosoftInbox(hotelId, maxResults = 50) {
+    if (!hotelId) throw new Error('hotelId required');
+    const { microsoftPollingService } = await import('./microsoft/runtime.js');
+    return microsoftPollingService.pollIntegration(hotelId, { pageSize: maxResults });
   },
 
   /**

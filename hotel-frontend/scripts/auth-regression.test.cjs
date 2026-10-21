@@ -29,8 +29,34 @@ test('profile and Gmail requests with no token fail before calling the backend',
   const { api } = load('api.ts', { ...f, fetch: async () => { fetches++; } });
   await assert.rejects(api.saveHotelProfile({ name: 'Hotel A' }), /sign in/i);
   await assert.rejects(api.getGoogleOAuthUrl(), /sign in/i);
+  await assert.rejects(api.getMicrosoftOAuthUrl(), /sign in/i);
   assert.equal(fetches, 0);
   assert.equal(f.localStorage.getItem('hotelogx.user.v1'), null);
+});
+
+test('Microsoft OAuth sends manager token and returns the real authorization URL', async () => {
+  const f = fixture(); f.localStorage.setItem('token', 'manager-token');
+  const { api } = load('api.ts', { ...f, fetch: async (url, options) => {
+    assert.match(url, /\/email\/oauth\/microsoft\?redirectBack=%2Fonboarding$/);
+    assert.equal(options.headers.Authorization, 'Bearer manager-token');
+    return { ok: true, json: async () => ({ data: { url: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize' } }) };
+  } });
+  assert.match((await api.getMicrosoftOAuthUrl()).url, /^https:\/\/login.microsoftonline.com/);
+});
+
+test('OAuth onboarding uses verified provider and rejects a fake successful callback', async () => {
+  class Store { constructor(value) { this.state = value; } setState(fn) { this.state = fn(this.state); } }
+  let connected = false;
+  const api = { getEmailStatus: async () => ({ connected, provider: 'microsoft', email: 'hotel@example.com' }), saveOnboardingStep: async () => ({}) };
+  const s = load('store.ts', { console, setTimeout: () => 0 }, {
+    '@tanstack/react-store': { Store }, './api': { api }, './data': { hotel: {}, planTiers: [], subscription: {} },
+    './onboarding': {}, './utils': { clockNow: () => 'now', uid: () => 'id', money: () => '' },
+  });
+  assert.equal(await s.connectEmail('oauth', null, undefined, 'hotel@example.com'), false);
+  assert.equal(s.store.state.onboarding.done.email, false);
+  connected = true;
+  assert.equal(await s.connectEmail('oauth', null, undefined, 'hotel@example.com'), true);
+  assert.equal(s.store.state.integrations.email.provider, 'microsoft');
 });
 
 test('authenticated profile save sends the token and preserves server errors', async () => {

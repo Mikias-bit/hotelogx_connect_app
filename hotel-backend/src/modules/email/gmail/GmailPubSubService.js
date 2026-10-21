@@ -7,6 +7,11 @@ export class GmailPubSubService {
       const data = body?.message?.data;
       if (typeof data !== 'string' || data.length > 16384 || !/^[A-Za-z0-9_+/=-]+$/.test(data)) throw new Error();
       notification = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
+      // Push IDs are hints only. Accept numeric JSON IDs without allowing
+      // rounded, unsafe integers to become valid identifiers.
+      if (Number.isSafeInteger(notification.historyId) && notification.historyId >= 0) {
+        notification.historyId = String(notification.historyId);
+      }
       if (typeof notification.emailAddress !== 'string' || !notification.emailAddress.includes('@') ||
         typeof notification.historyId !== 'string' || !/^\d+$/.test(notification.historyId)) throw new Error();
     } catch { throw Object.assign(new Error('Invalid Gmail Pub/Sub envelope'), { status: 400 }); }

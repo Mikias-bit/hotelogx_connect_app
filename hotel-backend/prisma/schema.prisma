@@ -368,6 +368,11 @@ model EmailIntegration {
   scope        String?   @db.Text
   watchExpiresAt DateTime?
   watchError   String?   @db.Text
+  lastDeltaLink String? @db.Text
+  graphSubscriptionId String? @unique
+  graphClientState String?
+  microsoftConnectedAt DateTime?
+  microsoftRetryAt DateTime?
   historyId    String?
   lastSyncAt   DateTime?
   status       String    @default("connected")
@@ -509,4 +514,35 @@ model GmailInboundMessage {
 
   @@unique([hotelId, mailbox, providerMessageId])
   @@index([hotelId, status])
+}
+
+model MicrosoftInboundMessage {
+  id String @id
+  hotelId String
+  mailbox String
+  providerMessageId String
+  conversationId String
+  threadId String?
+  sender String
+  subject String
+  internetMessageId String?
+  receivedAt DateTime
+  suppressReply Boolean @default(false)
+  status String @default("pending")
+  automationResult Json?
+  replyStatus String @default("pending")
+  outboundMessageId String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([hotelId, mailbox, providerMessageId])
+  @@index([hotelId, status])
+}
+
+model MicrosoftSyncJob {
+  hotelId String @id
+  revision String
+  renew Boolean @default(false)
+  updatedAt DateTime @updatedAt
 }

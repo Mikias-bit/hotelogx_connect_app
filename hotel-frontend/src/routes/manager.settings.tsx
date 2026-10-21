@@ -712,18 +712,11 @@ function IntegrationsPanel() {
       const oauthStatus = urlParams.get("oauth_status");
       if (oauthStatus === "success") {
         const emailAccount = urlParams.get("email") || profile.email;
-        toast("Google Mailbox Connected", "good", `${emailAccount} · Google Workspace`);
-        store.setState((s) => ({
-          ...s,
-          integrations: {
-            ...s.integrations,
-            email: { provider: "google", account: emailAccount, connected: true },
-          },
-        }));
+        toast("Mailbox authorized", "good", emailAccount);
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (oauthStatus === "error") {
-        const msg = urlParams.get("message") || "Google authorization failed";
-        toast("Could not connect Google mailbox", "urgent", decodeURIComponent(msg));
+        const msg = urlParams.get("message") || "Email authorization failed";
+        toast("Could not connect mailbox", "urgent", decodeURIComponent(msg));
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
@@ -775,31 +768,16 @@ function IntegrationsPanel() {
     }).catch(() => {});
   }, []);
 
-  const handleConnectGoogle = async () => {
+  const handleConnectEmail = async (provider: "google" | "microsoft") => {
     setIsConnectingEmail(true);
     try {
-      let hotelId = profile.id;
-      if (!hotelId && typeof window !== "undefined") {
-        try {
-          const rawUser = window.localStorage.getItem("hotelogx.user.v1");
-          if (rawUser) {
-            const u = JSON.parse(rawUser);
-            if (u?.hotelId) hotelId = u.hotelId;
-          }
-        } catch {}
-      }
-      const res = await api.getGoogleOAuthUrl("/manager/settings", hotelId || undefined);
-      const authUrl = (res as any)?.url || (res as any)?.data?.url;
-      if (authUrl) {
-        window.location.href = authUrl;
-        return;
-      }
-      // Direct browser navigation fallback to trigger redirect mode
-      const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-      const backendBase = isLocal ? "http://localhost:5000/api" : (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api");
-      window.location.href = `${backendBase}/email/oauth/google?redirectBack=${encodeURIComponent("/manager/settings")}&mode=redirect${hotelId ? `&hotelId=${encodeURIComponent(hotelId)}` : ""}`;
+      const result = provider === "microsoft"
+        ? await api.getMicrosoftOAuthUrl("/manager/settings")
+        : await api.getGoogleOAuthUrl("/manager/settings");
+      if (!result?.url) throw new Error("Could not generate authorization URL");
+      window.location.href = result.url;
     } catch (err: any) {
-      toast("Google OAuth error", "urgent", err?.message || "Please verify Google OAuth credentials on the server");
+      toast("Email authorization failed", "urgent", err?.message || "Please try again");
       setIsConnectingEmail(false);
     }
   };
@@ -1027,8 +1005,12 @@ function IntegrationsPanel() {
                   <button
                     key={option.key}
                     onClick={() => {
-                      if (option.key === "google" && !integrations.email.connected) {
-                        handleConnectGoogle();
+                      if (integrations.email.connected && option.key !== integrations.email.provider) {
+                        toast("Disconnect the current mailbox first", "attend", "Each hotel can connect one guest mailbox");
+                        return;
+                      }
+                      if ((option.key === "google" || option.key === "microsoft") && !integrations.email.connected) {
+                        handleConnectEmail(option.key);
                       } else {
                         store.setState((s) => ({
                           ...s,
@@ -1100,8 +1082,8 @@ function IntegrationsPanel() {
                       Disconnect Mailbox
                     </Button>
                   ) : (
-                    <Button size="sm" onClick={handleConnectGoogle} disabled={isConnectingEmail}>
-                      {isConnectingEmail ? "Connecting..." : "Connect with Google"}
+                    <Button size="sm" onClick={() => handleConnectEmail(integrations.email.provider === "microsoft" ? "microsoft" : "google")} disabled={isConnectingEmail}>
+                      {isConnectingEmail ? "Connecting..." : integrations.email.provider === "microsoft" ? "Connect with Microsoft" : "Connect with Google"}
                     </Button>
                   )}
                 </div>

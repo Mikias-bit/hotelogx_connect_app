@@ -19,7 +19,14 @@ import pmsRoutes from './modules/pms/pmsRoutes.js';
 import realtimeRoutes from './modules/realtime/realtimeRoutes.js';
 import emailRoutes from './modules/email/emailRoutes.js';
 
+import { microsoftPushHandler } from './modules/email/microsoft/runtime.js';
+import { microsoftWorkerRouter, microsoftManagerRouter } from './modules/email/microsoft/microsoftRoutes.js';
 const router = Router();
+router.post('/webhooks/email/microsoft/notifications', microsoftPushHandler);
+router.post('/email-provider-webhooks/microsoft/notifications', microsoftPushHandler);
+router.use('/workers/email', microsoftWorkerRouter);
+router.use('/email-workers', microsoftWorkerRouter);
+router.use('/email/microsoft', microsoftManagerRouter);
 
 router.get('/health', async (req, res) => {
   try {

@@ -130,6 +130,18 @@ test('Pub/Sub resolves only connected mailbox, never uses notification cursor as
   assert.throws(() => pubsub.decodePushEnvelope({ ...body, message: { data: 'bad' } }), { status: 400 });
 });
 
+test('Pub/Sub accepts safe numeric history hints and rejects invalid numeric IDs', () => {
+  const pubsub = new GmailPubSubService({});
+  const envelope = historyId => ({
+    message: { data: Buffer.from(JSON.stringify({ emailAddress: 'mail@example.com', historyId })).toString('base64url') },
+  });
+  assert.equal(pubsub.decodePushEnvelope(envelope(12345)).historyId, '12345');
+  assert.equal(pubsub.decodePushEnvelope(envelope('90071992547409930')).historyId, '90071992547409930');
+  for (const value of [Number.MAX_SAFE_INTEGER + 1, -1, 1.5, null, {}, 'invalid']) {
+    assert.throws(() => pubsub.decodePushEnvelope(envelope(value)), { status: 400 });
+  }
+});
+
 test('OIDC verifies signature, audience, issuer, service identity, verified email and expiry; fails closed', async () => {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'test-key' };

@@ -17,7 +17,9 @@ export function createPushHandler({ verifier, pubsub, auth }) {
       return res.status(204).end();
     } catch (error) {
       const status = [400, 401, 403, 503].includes(error.status) ? error.status : 500;
-      console.warn('[Gmail push] Request failed', { status, type: error.constructor.name });
+      const reason = ['Unexpected Pub/Sub subscription', 'Invalid Gmail Pub/Sub envelope'].includes(error.message)
+        ? error.message : 'Notification processing failed';
+      console.warn('[Gmail push] Request failed', { status, type: error.constructor.name, reason });
       return res.status(status).json({ success: false, message: status === 401 ? 'Invalid push identity' : 'Gmail notification not processed' });
     }
   };

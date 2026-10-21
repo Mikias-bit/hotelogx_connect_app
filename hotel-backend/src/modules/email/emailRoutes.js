@@ -23,7 +23,7 @@ router.get('/oauth/google', authenticate, requireGmailManager, initiateGoogleOAu
 router.get('/oauth/google/callback', googleOAuthCallbackController);
 
 // Microsoft Identity Platform OAuth 2.0 Initiation & Callback Routes
-router.get('/oauth/microsoft', initiateMicrosoftOAuthController);
+router.get('/oauth/microsoft', authenticate, requireGmailManager, initiateMicrosoftOAuthController);
 router.get('/oauth/microsoft/callback', microsoftOAuthCallbackController);
 
 const resolveEmailAuth = (req, res, next) => {

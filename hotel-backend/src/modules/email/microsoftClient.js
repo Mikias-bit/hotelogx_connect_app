@@ -1,3 +1,4 @@
+import { MicrosoftGraphEmailAdapter } from './microsoft/MicrosoftGraphEmailAdapter.js';
 import { config } from '../../config/env.js';
 import { prisma } from '../../config/database.js';
 import { encryptToken, decryptToken, generateOAuthState, verifyOAuthState } from '../../utils/tokenCrypto.js';
@@ -69,6 +70,7 @@ export const microsoftClient = {
 
     const res = await fetch(tokenEndpoint, {
       method: 'POST',
+      signal: AbortSignal.timeout(30000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id: clientId,
@@ -106,14 +108,16 @@ export const microsoftClient = {
     const hotelId = arg2 ? arg1 : null;
     const refreshToken = arg2 || arg1;
 
-    const clientId = (process.env.MICROSOFT_OAUTH_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID) || 'microsoft-client-id-placeholder';
-    const clientSecret = (process.env.MICROSOFT_OAUTH_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET) || 'microsoft-client-secret-placeholder';
+    const clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
+    const clientSecret = process.env.MICROSOFT_OAUTH_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
+    if (!clientId || !clientSecret) throw new Error('Microsoft OAuth credentials missing');
 
     const authority = getTenantAuthority();
     const tokenEndpoint = `${authority}/token`;
 
     const res = await fetch(tokenEndpoint, {
       method: 'POST',
+      signal: AbortSignal.timeout(30000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id: clientId,
@@ -151,7 +155,7 @@ export const microsoftClient = {
           status: 'connected',
           lastError: null,
         },
-      }).catch(() => {});
+      });
     }
 
     return result;
@@ -163,6 +167,7 @@ export const microsoftClient = {
   async getAuthenticatedMicrosoftUser(accessToken) {
     const graphBase = getGraphBaseUrl();
     const res = await fetch(`${graphBase}/me`, {
+      signal: AbortSignal.timeout(30000),
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: 'application/json',
@@ -226,6 +231,7 @@ export const microsoftClient = {
       ? Date.now() >= new Date(integration.tokenExpiry).getTime() - 60000
       : false;
 
+    if (isExpired && !rawRefreshToken) throw new Error('Microsoft offline access missing; reconnect mailbox');
     if (isExpired && rawRefreshToken) {
       try {
         const refreshed = await this.refreshAccessToken(hotelId, rawRefreshToken);
@@ -234,8 +240,7 @@ export const microsoftClient = {
         await prisma.emailIntegration.update({
           where: { hotelId },
           data: {
-            status: 'error',
-            lastError: `OAuth Token Refresh Failed: ${refreshErr.message}`,
+            lastError: 'Microsoft token refresh failed; retry or reconnect the mailbox',
           },
         }).catch(() => {});
         throw new Error(`Microsoft access expired and could not be refreshed. (${refreshErr.message})`);
@@ -375,127 +380,20 @@ export const microsoftClient = {
   /**
    * Outbound email dispatch via Microsoft Graph API (/v1.0/me/sendMail or /v1.0/me/messages/{id}/reply)
    */
-  async sendGuestMicrosoftMail({ hotelId, to, toEmail, subject, text, bodyText, bodyHtml, threadId, inReplyTo, messageId, targetMessageId }) {
+  async sendGuestMicrosoftMail({ hotelId, to, toEmail, subject, text, bodyText, bodyHtml, targetMessageId, messageId }) {
     const recipient = to || toEmail;
     const content = bodyText || text;
-    if (!hotelId || !recipient || (!content && !bodyHtml)) {
-      throw new Error('hotelId, recipient (to), and message content are required to send Microsoft email');
-    }
-
-    let { accessToken, email: fromEmail, integration } = await this.getValidAccessTokenForHotel(hotelId);
-    const graphBase = getGraphBaseUrl();
-
-    const resolvedTargetId = targetMessageId || messageId || (threadId && !threadId.startsWith('t-') ? threadId : null);
-
-    // 1. If replying to an existing Microsoft message ID, use Graph reply endpoint for thread continuity
-    if (resolvedTargetId) {
-      try {
-        const replyEndpoint = `${graphBase}/me/messages/${encodeURIComponent(resolvedTargetId)}/reply`;
-        const replyPayload = {
-          comment: bodyHtml || content,
-        };
-
-        const res = await fetch(replyEndpoint, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(replyPayload),
-        });
-
-        if (res.ok) {
-          return {
-            success: true,
-            provider: 'microsoft',
-            action: 'reply',
-            messageId: resolvedTargetId,
-            threadId: resolvedTargetId,
-            from: fromEmail,
-            to: recipient,
-          };
-        }
-      } catch (replyErr) {
-        // Fall back to sendMail if direct reply endpoint fails or message was moved
-      }
-    }
-
-    // 2. Standard outbound dispatch via /v1.0/me/sendMail
-    const sendMailEndpoint = `${graphBase}/me/sendMail`;
-    const recipientsList = recipient.split(',').map((emailStr) => {
-      const clean = emailStr.replace(/.*<(.+?)>.*/, '$1').trim();
-      return { emailAddress: { address: clean } };
-    }).filter((r) => r.emailAddress.address.includes('@'));
-
-    const contentHtml = bodyHtml || (content ? content.replace(/\n/g, '<br/>') : '');
-
-    const messageObject = {
-      subject: subject || 'Message from Hotel Reception',
-      body: {
-        contentType: 'HTML',
-        content: contentHtml,
-      },
-      toRecipients: recipientsList,
-    };
-
-    if (inReplyTo) {
-      messageObject.internetMessageHeaders = [
-        { name: 'In-Reply-To', value: inReplyTo },
-        { name: 'References', value: inReplyTo },
-      ];
-    }
-
-    const payload = {
-      message: messageObject,
-      saveToSentItems: 'true',
-    };
-
-    let response = null;
-    let attempts = 0;
-    const maxAttempts = 2;
-
-    while (attempts < maxAttempts) {
-      attempts++;
-      response = await fetch(sendMailEndpoint, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (response.status === 401 && attempts === 1) {
-        const rawRefreshToken = integration.refreshToken ? decryptToken(integration.refreshToken) : null;
-        if (rawRefreshToken) {
-          const refreshed = await this.refreshAccessToken(rawRefreshToken);
-          accessToken = refreshed.accessToken;
-          continue;
-        }
-      }
-      break;
-    }
-
-    if (!response || !response.ok) {
-      let errDetails = '';
-      try {
-        const errJson = await response.json();
-        errDetails = errJson?.error?.message || response.statusText;
-      } catch (_) {
-        errDetails = response?.statusText || 'SendMail request failed';
-      }
-      throw new Error(`Microsoft Graph SendMail Error (${response?.status || 'ERR'}): ${errDetails}`);
-    }
-
-    return {
-      success: true,
-      provider: 'microsoft',
-      action: 'sendMail',
-      from: fromEmail,
-      to,
-      subject,
-    };
+    if (!hotelId || !recipient || (!content && !bodyHtml)) throw new Error('Hotel, recipient and message content required');
+    const { integration } = await this.getValidAccessTokenForHotel(hotelId);
+    const adapter = new MicrosoftGraphEmailAdapter(integration, { getToken: id => this.getValidAccessTokenForHotel(id) });
+    // Graph conversationId is NOT a message ID. Use the persisted inbound message ID.
+    const target = targetMessageId || messageId;
+    if (target) return adapter.reply({ targetMessageId: target, bodyText: content || bodyHtml });
+    const recipients = recipient.split(',').map(value => ({ emailAddress: { address: value.replace(/.*<(.+?)>.*/, '$1').trim() } }));
+    if (recipients.some(r => !r.emailAddress.address.includes('@'))) throw new Error('Invalid recipient');
+    await adapter.request('/me/sendMail', { method: 'POST', body: { message: { subject: subject || 'Message from Hotel Reception',
+      body: { contentType: bodyHtml ? 'HTML' : 'Text', content: bodyHtml || content }, toRecipients: recipients }, saveToSentItems: true } });
+    return { success: true, provider: 'microsoft', messageId: null };
   },
 
   /**

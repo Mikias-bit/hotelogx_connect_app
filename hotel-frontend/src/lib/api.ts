@@ -1,5 +1,5 @@
 const isLocalBrowser = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-const API_BASE_URL = isLocalBrowser
+export const API_BASE_URL = isLocalBrowser
   ? (import.meta.env.VITE_API_LOCAL_URL || 'http://localhost:5000/api')
   : (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api');
 
@@ -18,7 +18,7 @@ function expireSession() {
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
   const strict = endpoint === '/auth/login' || endpoint === '/auth/register' ||
-    endpoint.startsWith('/email/oauth/google?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
+    endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
     const url = `${API_BASE_URL}${endpoint}`;
@@ -37,7 +37,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
 
     if (strict && !publicAuth && !headers['Authorization']) {
       expireSession();
-      throw new Error('Please sign in to your hotel manager account before saving or connecting Gmail.');
+      throw new Error('Please sign in to your hotel manager account before saving or connecting email.');
     }
     const res = await fetch(url, {
       ...options,
@@ -310,6 +310,8 @@ export const api = {
     request<{ url: string; hotelId: string }>(
       `/email/oauth/google?redirectBack=${encodeURIComponent(redirectBack)}${hotelId ? `&hotelId=${encodeURIComponent(hotelId)}` : ''}`
     ),
+  getMicrosoftOAuthUrl: (redirectBack: string = '/onboarding') =>
+    request<{ url: string; hotelId: string }>(`/email/oauth/microsoft?redirectBack=${encodeURIComponent(redirectBack)}`),
   syncGmail: () =>
     request<any>('/email/sync', { method: 'POST' }),
   getOnboardingStatus: () =>
