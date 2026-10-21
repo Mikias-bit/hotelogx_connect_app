@@ -1,65 +1,12 @@
-import nodemailer from 'nodemailer';
 import { prisma } from '../../config/database.js';
-import { decryptToken } from '../../utils/tokenCrypto.js';
-
-/**
- * SMTP client utility for Hostinger / Titan and standard credentials mailboxes
- */
+import { ImapSmtpEmailAdapter } from './imap/ImapSmtpEmailAdapter.js';
+import { IMAP_PROVIDERS } from './imap/mailSecurity.js';
 export const smtpClient = {
-  /**
-   * Send outbound email to a guest via authenticated SMTP
-   */
-  async sendSmtpGuestMail({ hotelId, to, subject, bodyText, threadId }) {
-    if (!hotelId || !to || !bodyText) {
-      throw new Error('hotelId, to recipient, and bodyText are required for SMTP send');
+  async sendSmtpGuestMail(options) {
+    const integration = await prisma.emailIntegration.findUnique({ where: { hotelId: options.hotelId } });
+    if (!integration || !IMAP_PROVIDERS.includes(integration.provider) || integration.status !== 'connected' || !integration.mailVerifiedAt) {
+      throw Object.assign(new Error('Verify and connect IMAP/SMTP for this hotel before sending'), { definitelyNotSent: true });
     }
-
-    const [integration, hotel] = await Promise.all([
-      prisma.emailIntegration.findUnique({ where: { hotelId } }),
-      prisma.hotel.findUnique({ where: { id: hotelId }, select: { name: true } }),
-    ]);
-
-    if (!integration || !integration.accessToken) {
-      throw new Error(`No active email integration credentials found for hotel ${hotelId}`);
-    }
-
-    const password = decryptToken(integration.accessToken);
-    if (!password) {
-      throw new Error(`Failed to decrypt SMTP credentials for hotel ${hotelId}`);
-    }
-
-    const host = integration.smtpHost || `smtp.${integration.email.split('@')[1]}`;
-    const port = integration.smtpPort || 465;
-    const isSecure = port === 465;
-
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: isSecure,
-      auth: {
-        user: integration.email,
-        pass: password,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    const hotelName = hotel?.name || 'Hotel Front Office';
-    const info = await transporter.sendMail({
-      from: `"${hotelName}" <${integration.email}>`,
-      to,
-      subject: subject || 'Message from Hotel Reception',
-      text: bodyText,
-      headers: threadId ? { 'In-Reply-To': threadId, References: threadId } : {},
-    });
-
-    return {
-      success: true,
-      messageId: info.messageId,
-      provider: 'credentials',
-      to,
-      subject,
-    };
+    return new ImapSmtpEmailAdapter(integration).send({ ...options, to: options.to || options.toEmail, bodyText: options.bodyText || options.text });
   },
 };

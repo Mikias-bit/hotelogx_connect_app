@@ -491,14 +491,16 @@ export const emailService = {
           targetMessageId: inbound?.providerMessageId,
         });
         dispatched = Boolean(sendResult?.success);
-      } else if ((integration?.provider === 'credentials' || integration?.provider === 'hostinger') && integration?.accessToken) {
+      } else if ((integration?.provider === 'credentials' || integration?.provider === 'hostinger') && integration?.mailVerifiedAt) {
         const { smtpClient } = await import('./smtpClient.js');
+        const inbound = conversationId ? await prisma.imapInboundMessage.findFirst({ where:{ hotelId,mailboxKey:integration.imapMailboxKey,conversationId },orderBy:{ receivedAt:'desc' } }) : null;
         sendResult = await smtpClient.sendSmtpGuestMail({
           hotelId,
           to: toEmail,
           subject: subject || 'Message from Hotel Reception',
           bodyText: text,
-          threadId,
+          inReplyTo: inbound?.internetMessageId,
+          references: inbound?.internetMessageId,
         });
         dispatched = Boolean(sendResult?.success);
       } else {
@@ -580,54 +582,9 @@ export const emailService = {
   /**
    * Synchronize incoming guest emails from the hotel's authenticated IMAP (Hostinger/Titan) inbox
    */
-  async syncHotelImapInbox(hotelId, maxResults = 10) {
-    if (!hotelId) {
-      throw new Error('hotelId is required for IMAP sync');
-    }
-
-    const { imapClient } = await import('./imapClient.js');
-    const messages = await imapClient.fetchRecentImapMessages(hotelId, maxResults);
-    const processed = [];
-
-    for (const msg of messages) {
-      try {
-        const exists = await prisma.message.findFirst({
-          where: {
-            OR: [
-              { id: msg.id },
-              { body: msg.bodyText, channel: 'email' },
-            ],
-          },
-        });
-
-        if (!exists) {
-          const result = await this.processInboundEmail({
-            messageId: msg.id,
-            from: msg.from,
-            to: msg.to,
-            subject: msg.subject,
-            text: msg.bodyText,
-            hotelId,
-          });
-          processed.push(result);
-        }
-      } catch (procErr) {
-        console.warn(`[IMAP Sync Ingestion Warning]:`, procErr.message);
-      }
-    }
-
-    await prisma.emailIntegration.update({
-      where: { hotelId },
-      data: { lastSyncAt: new Date() },
-    }).catch(() => {});
-
-    return {
-      success: true,
-      provider: 'credentials',
-      count: processed.length,
-      syncedAt: new Date().toISOString(),
-      messages: processed,
-    };
+  async syncHotelImapInbox(hotelId,maxResults=50) {
+    const { imapPollingService } = await import('./imap/runtime.js');
+    return imapPollingService.pollIntegration(hotelId,{ limit:maxResults });
   },
 
   /**

@@ -313,6 +313,8 @@ export type WaTopology = "separate" | "single" | "guest-only";
 export type WaConnectionType = "guest" | "internal";
 
 export interface EmailServerSettings {
+  imapUser?: string;
+  smtpUser?: string;
   imapHost: string;
   imapPort: number;
   imapSecurity: string;

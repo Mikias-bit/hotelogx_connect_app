@@ -1,9 +1,9 @@
+import { ManualMailboxForm } from './ManualMailboxForm';
 import { useEffect, useState } from "react";
-import { ArrowRight, Check, ChevronDown, Loader2, Lock, Mail, Search, Settings2, ShieldCheck } from "lucide-react";
-import { blankSettings, isEmailish } from "@/lib/onboarding";
+import { ArrowRight, Check, Loader2, Lock, Mail, Search, Settings2, ShieldCheck } from "lucide-react";
+import { isEmailish } from "@/lib/onboarding";
 import { connectEmail, runEmailDetection, toast, useApp } from "@/lib/store";
 import { api } from "@/lib/api";
-import type { EmailServerSettings } from "@/lib/types";
 import { Badge, Button, Card, Eyebrow, SectionTitle } from "./ui";
 import { ConnectionHealth } from "./ConnectionHealth";
 
@@ -49,7 +49,6 @@ export function OnboardingEmailStep() {
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState("");
   const [advanced, setAdvanced] = useState(false);
-  const [manual, setManual] = useState<EmailServerSettings>(email.settings ?? blankSettings);
 
   const detection = email.detection;
   const connected = email.state === "connected";
@@ -79,7 +78,6 @@ export function OnboardingEmailStep() {
     setBusy(true);
     const result = await runEmailDetection(address.trim());
     setBusy(false);
-    setManual(result.settings ?? blankSettings);
     setAdvanced(result.method === "manual");
   };
 
@@ -228,7 +226,7 @@ export function OnboardingEmailStep() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button disabled={password.length < 4} onClick={() => connectEmail("credentials", detection.settings)}>
+                  <Button disabled={busy || password.length < 4} onClick={async () => { setBusy(true); try { if (await connectEmail("credentials", detection.settings, password, email.address || address)) setPassword(""); } finally { setBusy(false); } }}>
                     Connect
                   </Button>
                   <Button variant="ghost" icon={Settings2} onClick={() => setAdvanced((v) => !v)}>
@@ -259,77 +257,7 @@ export function OnboardingEmailStep() {
             )}
 
             {/* manual IMAP / SMTP -------------------------------------------- */}
-            {advanced && (
-              <div className="mt-3 rounded-[10px] border border-line bg-paper/50 p-3.5">
-                <button
-                  onClick={() => setAdvanced(false)}
-                  className="flex w-full items-center justify-between gap-2 text-left"
-                >
-                  <span className="text-[13px] font-medium text-ink">Advanced setup — IMAP and SMTP</span>
-                  <ChevronDown className="size-3.5 text-ink-4" />
-                </button>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {(
-                    [
-                      { key: "imapHost" as const, label: "IMAP server", placeholder: "imap.yourhotel.com" },
-                      { key: "imapPort" as const, label: "IMAP port", placeholder: "993" },
-                      { key: "smtpHost" as const, label: "SMTP server", placeholder: "smtp.yourhotel.com" },
-                      { key: "smtpPort" as const, label: "SMTP port", placeholder: "587" },
-                    ] as const
-                  ).map((f) => (
-                    <label key={f.key} className="block">
-                      <span className="text-[11.5px] font-medium text-ink-3">{f.label}</span>
-                      <input
-                        value={String(manual[f.key] ?? "")}
-                        placeholder={f.placeholder}
-                        onChange={(e) =>
-                          setManual((m) => ({
-                            ...m,
-                            ...(f.key === "imapPort"
-                              ? { imapPort: Number(e.target.value.replace(/\D/g, "")) || 0 }
-                              : f.key === "smtpPort"
-                                ? { smtpPort: Number(e.target.value.replace(/\D/g, "")) || 0 }
-                                : f.key === "imapHost"
-                                  ? { imapHost: e.target.value }
-                                  : { smtpHost: e.target.value }),
-                          }))
-                        }
-                        className="tnum mt-1 w-full rounded-[9px] border border-line bg-surface px-2.5 py-2 font-mono text-[12.5px] outline-none focus:border-pine-400"
-                      />
-                    </label>
-                  ))}
-                  <label className="block">
-                    <span className="text-[11.5px] font-medium text-ink-3">Mailbox address</span>
-                    <input
-                      value={email.address || address}
-                      readOnly
-                      className="tnum mt-1 w-full rounded-[9px] border border-line bg-paper/60 px-2.5 py-2 font-mono text-[12.5px] text-ink-2 outline-none"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-[11.5px] font-medium text-ink-3">Password</span>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="mt-1 w-full rounded-[9px] border border-line bg-surface px-2.5 py-2 font-mono text-[12.5px] outline-none focus:border-pine-400"
-                    />
-                  </label>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button
-                    disabled={!manual.imapHost || !manual.smtpHost || password.length < 4}
-                    onClick={() => connectEmail("manual", manual)}
-                  >
-                    Test and connect
-                  </Button>
-                  <span className="text-[11.5px] text-ink-4">
-                    {detection.mx[0] ? `Your domain receives mail at ${detection.mx[0]}` : "No MX records were published"}
-                  </span>
-                </div>
-              </div>
-            )}
+            {advanced && <ManualMailboxForm />}
 
             {/* what the lookup actually found -------------------------------- */}
             <details className="mt-3 rounded-[10px] border border-line-soft bg-surface px-3 py-2">

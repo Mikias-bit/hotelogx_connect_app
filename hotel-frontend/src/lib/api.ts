@@ -17,7 +17,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -316,7 +316,7 @@ export const api = {
     request<any>('/email/sync', { method: 'POST' }),
   getOnboardingStatus: () =>
     request<any>('/onboarding/status'),
-  testEmailConnection: (data: { email: string; password?: string; host?: string; port?: number; method?: string }) =>
+  testEmailConnection: (data: { email: string; password?: string; host?: string; port?: number; method?: string; settings?: import('./types').EmailServerSettings | null; smtpPassword?: string }) =>
 
     request<any>('/email/test-connection', {
       method: 'POST',

@@ -61,6 +61,7 @@ export const emailProviderFactory = {
           return await microsoftClient.sendGuestMicrosoftMail(options);
         } else if (providerType === 'credentials' || providerType === 'hostinger') {
           return await smtpClient.sendSmtpGuestMail({
+            ...options,
             hotelId,
             to: options.to || options.toEmail,
             subject: options.subject,
@@ -98,21 +99,14 @@ export const emailProviderFactory = {
         } else if (providerType === 'microsoft') {
           return await microsoftClient.testConnection(hotelId);
         } else if (providerType === 'credentials' || providerType === 'hostinger') {
-          const { decryptToken } = await import('../../utils/tokenCrypto.js');
-          const pass = decryptToken(integration.accessToken);
-          const result = await imapClient.verifyImapAuth({
-            host: integration.imapHost || `imap.${integration.email.split('@')[1]}`,
-            port: integration.imapPort || 993,
-            username: integration.email,
-            password: pass,
-          });
+          const { ImapSmtpEmailAdapter } = await import('./imap/ImapSmtpEmailAdapter.js');
+          await new ImapSmtpEmailAdapter(integration).verifyConnection();
           return {
-            success: result.ok,
-            verified: result.ok,
+            success: true,
+            verified: true,
             provider: 'credentials',
             email: integration.email,
-            status: result.ok ? 'connected' : 'error',
-            message: result.message || result.error,
+            status: 'connected',
           };
         } else {
           return {

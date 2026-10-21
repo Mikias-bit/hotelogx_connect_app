@@ -1,3 +1,4 @@
+import { imapConnectionService } from './imap/runtime.js';
 import { microsoftSubscriptions } from './microsoft/runtime.js';
 import { gmailWatchService, withGmailMailboxLock } from './gmail/runtime.js';
 import { emailService } from './emailService.js';
@@ -102,6 +103,7 @@ export const googleOAuthCallbackController = async (req, res) => {
       if (!steps.includes('email')) steps.push('email');
       const saved = await prisma.$transaction(async tx => {
         const data = {
+          imapPassword:null,smtpPassword:null,imapUser:null,smtpUser:null,imapMailboxKey:null,imapUidValidity:null,imapLastUid:null,imapRecoveryUntilUid:null,mailVerifiedAt:null,
           email: emailAddress, provider: 'google', accessToken: encryptToken(tokens.accessToken),
           refreshToken: tokens.refreshToken ? encryptToken(tokens.refreshToken) : existing.refreshToken,
           tokenExpiry: new Date(Date.now() + tokens.expiresIn * 1000), scope: tokens.scope,
@@ -136,151 +138,21 @@ export const googleOAuthCallbackController = async (req, res) => {
  * Controller to test live IMAP / SMTP socket connection and greeting
  * Endpoint: POST /api/email/test-connection
  */
-export const testConnectionController = async (req, res) => {
+export const testConnectionController = async (req,res) => {
   try {
-    const hotelId = req.user?.hotelId || req.headers['x-hotel-id'] || req.body?.hotelId;
-    if (!hotelId) {
-      return errorResponse(res, 'Authentication and tenant context required', 401);
+    if (req.user?.role !== 'manager' || !req.user.hotelId) return errorResponse(res,'Hotel manager access required',403);
+    if (req.body?.method === 'oauth') {
+      const integration=await prisma.emailIntegration.findUnique({ where:{ hotelId:req.user.hotelId } });
+      const email=String(req.body.email || req.body.address || '').toLowerCase();
+      if (!integration || !['google','microsoft'].includes(integration.provider) || integration.status!=='connected' || integration.email.toLowerCase()!==email) return errorResponse(res,'Complete OAuth for this hotel first',409);
+      return successResponse(res,{ verified:true,provider:integration.provider,email:integration.email },'OAuth mailbox verified');
     }
-    const { email, address, password, host, port, method, settings } = req.body;
-
-    const targetEmail = (address || email || '').trim();
-    const targetHost = (settings?.imapHost || host || '').trim();
-    const targetPort = Number(settings?.imapPort || port || 993);
-    const targetSecurity = settings?.imapSecurity || 'SSL/TLS';
-    const targetMethod = method || (settings ? 'manual' : 'credentials');
-
-    if (!targetEmail || typeof targetEmail !== 'string') {
-      return errorResponse(res, 'Email address is required', 400);
-    }
-
-    let verificationResult;
-
-    if (targetMethod === 'oauth') {
-      const integration = await prisma.emailIntegration.findUnique({ where: { hotelId } });
-      if (!integration || !['google', 'microsoft'].includes(integration.provider) || integration.status !== 'connected' ||
-          !integration.accessToken || integration.email.toLowerCase() !== targetEmail.toLowerCase()) {
-        return errorResponse(res, 'Complete OAuth for this hotel before saving the email connection', 409);
-      }
-      return successResponse(res, { verified: true, provider: integration.provider, email: integration.email }, 'OAuth connection saved');
-    } else if (password && targetHost) {
-      // Genuine remote IMAP authentication verification using ImapFlow
-      verificationResult = await imapClient.verifyImapAuth({
-        host: targetHost,
-        port: targetPort,
-        username: targetEmail,
-        password,
-        secure: targetPort === 993 || targetSecurity === 'SSL/TLS',
-      });
-
-      if (!verificationResult.ok) {
-        return errorResponse(res, verificationResult.error || 'Mailbox authentication failed', 400);
-      }
-    } else if (targetHost) {
-      // Live TCP TLS socket verification if password not yet provided
-      verificationResult = await verifyImapConnection({
-        host: targetHost,
-        port: targetPort,
-        security: targetSecurity,
-        username: targetEmail,
-        password: password,
-      });
-
-      if (!verificationResult.ok) {
-        return errorResponse(res, verificationResult.error || 'Mail server connection failed', 400);
-      }
-    } else {
-      // Fast fallback if host is inferred
-      verificationResult = await emailService.testMailboxConnection({
-        email: targetEmail,
-        password,
-        host: targetHost,
-        port: targetPort,
-        method: targetMethod,
-      });
-    }
-
-    // Persist dynamic email configuration and encrypted credentials to MySQL for this tenant hotelId
-    try {
-      const hotel = await prisma.hotel.findUnique({ where: { id: hotelId } });
-      if (hotel) {
-        let stepsDone = ['profile'];
-        if (hotel.onboardingSteps) {
-          try {
-            stepsDone = JSON.parse(hotel.onboardingSteps);
-          } catch {
-            stepsDone = ['profile'];
-          }
-        }
-        if (!stepsDone.includes('email')) {
-          stepsDone.push('email');
-        }
-
-        await prisma.hotel.update({
-          where: { id: hotel.id },
-          data: {
-            email: targetEmail,
-            onboardingSteps: JSON.stringify(stepsDone),
-          },
-        });
-
-        // Determine IMAP and SMTP configurations
-        const cleanHost = targetHost || (targetEmail.includes('@') ? `imap.${targetEmail.split('@')[1]}` : null);
-        const isHostingerOrTitan = cleanHost?.includes('hostinger') || cleanHost?.includes('titan') || targetEmail.includes('titan');
-        const provider = isHostingerOrTitan ? 'hostinger' : (targetMethod === 'oauth' ? 'google' : 'credentials');
-        const smtpHost = settings?.smtpHost || (cleanHost ? cleanHost.replace('imap.', 'smtp.') : null);
-        const smtpPort = Number(settings?.smtpPort) || 465;
-        const encryptedPass = password ? encryptToken(password) : null;
-
-        await prisma.emailIntegration.upsert({
-          where: { hotelId },
-          update: {
-            email: targetEmail,
-            provider,
-            imapHost: cleanHost,
-            imapPort: targetPort || 993,
-            smtpHost,
-            smtpPort,
-            ...(encryptedPass ? { accessToken: encryptedPass } : {}),
-            status: 'connected',
-            lastError: null,
-          },
-          create: {
-            hotelId,
-            email: targetEmail,
-            provider,
-            imapHost: cleanHost,
-            imapPort: targetPort || 993,
-            smtpHost,
-            smtpPort,
-            accessToken: encryptedPass,
-            status: 'connected',
-          },
-        });
-
-        await prisma.activityItem.create({
-          data: {
-            id: `act-${Date.now()}`,
-            hotelId: hotel.id,
-            at: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-            kind: 'room',
-            text: `Guest mailbox connected: ${targetEmail}`,
-            meta: 'Setup Wizard',
-          },
-        }).catch(() => {});
-      }
-    } catch (dbErr) {
-      console.warn('[Email DB Save Warning]', dbErr.message);
-    }
-
-    return successResponse(res, {
-      ...verificationResult,
-      address: targetEmail,
-      hotelId,
-      state: 'connected',
-    }, 'Mailbox credentials verified and integration persisted successfully');
-  } catch (error) {
-    return errorResponse(res, error.message, 400);
+    const result=await imapConnectionService.connect(req.user.hotelId,req.body || {});
+    return successResponse(res,result,'IMAP and SMTP authenticated; mailbox saved');
+  } catch(error) {
+    if (error.code==='P2002') return errorResponse(res,'Mailbox already linked to another hotel',409);
+    if (error.constructor.name.startsWith('Prisma')) return errorResponse(res,'Could not save the mailbox connection; check database migration and retry',503);
+    return errorResponse(res,error.message,error.status || 400);
   }
 };
 
@@ -362,7 +234,7 @@ export const syncGmailController = async (req, res) => {
     if (!hotelId) {
       return errorResponse(res, 'Authentication and tenant context required', 401);
     }
-    const result = await emailService.syncHotelGmailInbox(hotelId, req.body?.maxResults || 10);
+    const result = await emailService.syncHotelInbox(hotelId, req.body?.maxResults || 50);
     return successResponse(res, result, 'Gmail inbox synced successfully');
   } catch (error) {
     return errorResponse(res, error.message, 500);
@@ -445,7 +317,7 @@ export const microsoftOAuthCallbackController = async (req, res) => {
       try { steps = JSON.parse(hotel.onboardingSteps || '[]'); } catch {}
       if (!steps.includes('email')) steps.push('email');
       const saved = await prisma.$transaction(async tx => {
-        const data = { email: emailAddress, provider: 'microsoft', accessToken: encryptToken(tokens.accessToken),
+        const data = { imapPassword:null,smtpPassword:null,imapUser:null,smtpUser:null,imapMailboxKey:null,imapUidValidity:null,imapLastUid:null,imapRecoveryUntilUid:null,mailVerifiedAt:null, email: emailAddress, provider: 'microsoft', accessToken: encryptToken(tokens.accessToken),
           refreshToken: tokens.refreshToken ? encryptToken(tokens.refreshToken) : existing.refreshToken,
           tokenExpiry: new Date(Date.now() + tokens.expiresIn * 1000), scope: tokens.scope,
           lastDeltaLink: sameMailbox ? existing.lastDeltaLink : null,
@@ -531,7 +403,8 @@ export const getEmailStatusController = async (req, res) => {
       watchExpiresAt: integration.watchExpiresAt,
       watchError: integration.watchError,
       lastError: integration.lastError,
-      ingestionReady: !['google', 'microsoft'].includes(integration.provider) || Boolean(integration.watchExpiresAt && integration.watchExpiresAt > new Date()),
+      mailVerifiedAt: integration.mailVerifiedAt,
+      ingestionReady: ['google','microsoft'].includes(integration.provider) ? Boolean(integration.watchExpiresAt && integration.watchExpiresAt > new Date()) : Boolean(integration.mailVerifiedAt),
     }, 'Email integration status fetched');
   } catch (error) {
     return errorResponse(res, error.message, 500);

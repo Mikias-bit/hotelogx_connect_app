@@ -264,13 +264,18 @@ export const saveOnboardingStep = async (req, res, next) => {
     const hotelId = req.user?.hotelId;
     if (!hotelId) return errorResponse(res, 'Authentication and hotel context required', 401);
     const { stepKey, data } = req.body;
-    if (stepKey === 'email' && data?.method === 'oauth') {
-      const integration = await prisma.emailIntegration.findUnique({ where: { hotelId } });
-      const address = String(data?.address || data?.email || '').trim().toLowerCase();
-      if (!integration || !['google', 'microsoft'].includes(integration.provider) || integration.status !== 'connected' ||
-          !integration.accessToken || integration.email.toLowerCase() !== address) {
-        return errorResponse(res, 'Complete Google or Microsoft authorization for this hotel first', 409);
+    if (stepKey === 'email') {
+      if (req.user?.role !== 'manager') return errorResponse(res,'Hotel manager access required',403);
+      const integration=await prisma.emailIntegration.findUnique({ where:{ hotelId } });
+      const address=String(data?.address || data?.email || '').trim().toLowerCase();
+      const oauth=data?.method==='oauth';
+      if (!integration || integration.status!=='connected' || integration.email.toLowerCase()!==address ||
+          (oauth ? !['google','microsoft'].includes(integration.provider) || !integration.accessToken : !['credentials','hostinger'].includes(integration.provider) || !integration.mailVerifiedAt)) {
+        return errorResponse(res,'Verify and connect this mailbox before completing onboarding',409);
       }
+      // OAuth callbacks and IMAP connection service already commit completion atomically.
+      // This endpoint must never save unverified passwords or replace server settings.
+      return successResponse(res,{ stepKey,email:integration.email,provider:integration.provider },'Verified email step saved');
     }
     if (stepKey === 'users' && (data?.email || data?.address)) {
       const user = await inviteStaff(req.user, data);
@@ -326,48 +331,6 @@ export const saveOnboardingStep = async (req, res, next) => {
     const updateData = {
       onboardingSteps: JSON.stringify(stepsDone),
     };
-
-    if (stepKey === 'email' && data?.method !== 'oauth' && (data?.address || data?.email)) {
-      const emailAddr = (data?.address || data?.email || '').trim();
-      updateData.email = emailAddr;
-
-      // Also persist to EmailIntegration with encryption
-      const password = data?.password;
-      const settings = data?.settings;
-      const host = (settings?.imapHost || (emailAddr.includes('@') ? `imap.${emailAddr.split('@')[1]}` : '')).trim();
-      const port = Number(settings?.imapPort) || 993;
-      const smtpHost = (settings?.smtpHost || (host ? host.replace('imap.', 'smtp.') : '')).trim();
-      const smtpPort = Number(settings?.smtpPort) || 465;
-      const isHostinger = host.includes('hostinger') || host.includes('titan') || emailAddr.includes('titan');
-      const provider = isHostinger ? 'hostinger' : (data?.method === 'oauth' ? 'google' : 'credentials');
-      const encryptedToken = password ? encryptToken(password) : null;
-
-      prisma.emailIntegration.upsert({
-        where: { hotelId },
-        update: {
-          email: emailAddr,
-          provider,
-          imapHost: host || null,
-          imapPort: port,
-          smtpHost: smtpHost || null,
-          smtpPort,
-          ...(encryptedToken ? { accessToken: encryptedToken } : {}),
-          status: 'connected',
-          lastError: null,
-        },
-        create: {
-          hotelId,
-          email: emailAddr,
-          provider,
-          imapHost: host || null,
-          imapPort: port,
-          smtpHost: smtpHost || null,
-          smtpPort,
-          accessToken: encryptedToken,
-          status: 'connected',
-        },
-      }).catch((err) => console.warn('[Onboarding EmailIntegration Upsert Warning]:', err.message));
-    }
 
     if (stepKey === 'wa-guest' && (data?.phone || data?.displayPhoneNumber)) {
       updateData.whatsappNumber = data.phone || data.displayPhoneNumber;

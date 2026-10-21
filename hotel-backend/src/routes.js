@@ -21,7 +21,11 @@ import emailRoutes from './modules/email/emailRoutes.js';
 
 import { microsoftPushHandler } from './modules/email/microsoft/runtime.js';
 import { microsoftWorkerRouter, microsoftManagerRouter } from './modules/email/microsoft/microsoftRoutes.js';
+import { imapWorkerRouter,imapManagerRouter } from './modules/email/imap/imapRoutes.js';
 const router = Router();
+router.use('/workers/email',imapWorkerRouter);
+router.use('/email-workers',imapWorkerRouter);
+router.use('/email/imap',imapManagerRouter);
 router.post('/webhooks/email/microsoft/notifications', microsoftPushHandler);
 router.post('/email-provider-webhooks/microsoft/notifications', microsoftPushHandler);
 router.use('/workers/email', microsoftWorkerRouter);

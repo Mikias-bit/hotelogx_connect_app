@@ -137,3 +137,21 @@ test('profile state and completion change only after the backend confirms saving
   assert.equal(s.store.state.hotelProfile.name, 'Hotel A');
   assert.equal(s.store.state.toasts.at(-1).tone, 'urgent');
 });
+
+test('IMAP connection sends both settings and password, and never completes after failure', async () => {
+  class Store { constructor(value) { this.state = value; } setState(fn) { this.state = fn(this.state); } }
+  let result = null, request, saves = 0;
+  const api = { testEmailConnection: async body => { request = body; return result; }, saveOnboardingStep: async () => { saves++; } };
+  const s = load('store.ts', { console, setTimeout: () => 0 }, {
+    '@tanstack/react-store': { Store }, './api': { api }, './data': { hotel: {}, planTiers: [], subscription: {} },
+    './onboarding': {}, './utils': { clockNow: () => 'now', uid: () => 'id', money: () => '' },
+  });
+  const settings = { imapHost:'imap.example.com',imapPort:993,imapSecurity:'SSL/TLS',smtpHost:'smtp.example.com',smtpPort:587,smtpSecurity:'STARTTLS' };
+  assert.equal(await s.connectEmail('manual',settings,'app-password','hotel@example.com','smtp-password'),false);
+  assert.equal(s.store.state.onboarding.done.email,false);
+  assert.equal(request.password,'app-password');assert.equal(request.smtpPassword,'smtp-password');assert.equal(request.settings.smtpPort,587);
+  result = { verified:true };
+  assert.equal(await s.connectEmail('manual',settings,'app-password','hotel@example.com'),true);
+  assert.equal(s.store.state.integrations.email.provider,'other');assert.equal(saves,0);
+  assert.equal(JSON.stringify(s.store.state).includes('app-password'),false);
+});

@@ -9,6 +9,7 @@ if (!/^postgres(?:ql)?:\/\//.test(process.env.DATABASE_URL || '')) {
   throw new Error('DATABASE_URL must be a PostgreSQL connection URL. Configure the Neon connection in .env or Cloud Run secrets.');
 }
 export const config = {
+  imapWorker: { audience:process.env.IMAP_WORKER_AUDIENCE || '',serviceAccount:process.env.IMAP_WORKER_SERVICE_ACCOUNT || '' },
   microsoftGraph: {
     notificationUrl: process.env.MICROSOFT_GRAPH_NOTIFICATION_URL || `${backendBaseUrl}/api/webhooks/email/microsoft/notifications`,
     taskQueue: process.env.MICROSOFT_TASK_QUEUE || '',

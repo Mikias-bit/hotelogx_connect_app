@@ -47,7 +47,7 @@ router.post('/sync', resolveEmailAuth, syncGmailController);
 router.post('/sync/microsoft', resolveEmailAuth, syncMicrosoftController);
 
 // Test mail server connection (IMAP / SMTP socket handshake or Microsoft Graph)
-router.post('/test-connection', resolveEmailAuth, testConnectionController);
+router.post('/test-connection', authenticate, requireGmailManager, testConnectionController);
 router.post('/test-connection/microsoft', resolveEmailAuth, testMicrosoftConnectionController);
 
 // Inbound email receiver (Webhook from email gateway / IMAP fetcher)

@@ -1,0 +1,13 @@
+import { prisma } from '../../../config/database.js';
+import { withGmailMailboxLock } from '../gmail/runtime.js';
+import { processGuestMessageAI } from '../../conversations/aiService.js';
+import { realtimeService } from '../../../services/realtimeService.js';
+import { ImapSmtpEmailAdapter } from './ImapSmtpEmailAdapter.js';
+import { ImapConnectionService } from './ImapConnectionService.js';
+import { ImapPollingService } from './ImapPollingService.js';
+import { ImapInboundProcessor } from './ImapInboundProcessor.js';
+import { smtpClient } from '../smtpClient.js';
+export const imapAdapterFactory=(integration,options)=>new ImapSmtpEmailAdapter(integration,options);
+export const imapConnectionService=new ImapConnectionService({ db:prisma,withMailboxLock:withGmailMailboxLock,adapterFactory:imapAdapterFactory });
+export const imapInboundProcessor=new ImapInboundProcessor({ db:prisma,automate:processGuestMessageAI,send:options=>smtpClient.sendSmtpGuestMail(options),broadcast:(...args)=>realtimeService.broadcastToHotel(...args) });
+export const imapPollingService=new ImapPollingService({ db:prisma,withMailboxLock:withGmailMailboxLock,adapterFactory:imapAdapterFactory,processor:imapInboundProcessor });

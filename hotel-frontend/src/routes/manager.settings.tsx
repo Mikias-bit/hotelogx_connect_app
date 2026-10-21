@@ -1,3 +1,4 @@
+import { ManualMailboxForm } from '@/components/ManualMailboxForm';
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
@@ -738,7 +739,7 @@ function IntegrationsPanel() {
           integrations: {
             ...s.integrations,
             email: {
-              provider: data.provider || s.integrations.email.provider,
+              provider: data.provider === "google" || data.provider === "microsoft" ? data.provider : data.provider ? "other" : s.integrations.email.provider,
               account: data.email || s.integrations.email.account,
               connected: Boolean(data.connected),
             },
@@ -1043,30 +1044,7 @@ function IntegrationsPanel() {
             </div>
 
             {integrations.email.provider === "other" ? (
-              <div className="mt-4 grid gap-3 rounded-[10px] border border-line bg-paper/50 p-3.5 sm:grid-cols-2">
-                {[
-                  { label: "IMAP server", placeholder: "imap.yourhotel.com" },
-                  { label: "IMAP port", placeholder: "993" },
-                  { label: "SMTP server", placeholder: "smtp.yourhotel.com" },
-                  { label: "SMTP port", placeholder: "587" },
-                  { label: "Mailbox address", placeholder: profile.email || "reception@yourhotel.com" },
-                  { label: "Password", placeholder: "••••••••" },
-                ].map((f) => (
-                  <label key={f.label} className="block">
-                    <span className="text-[11.5px] font-medium text-ink-3">{f.label}</span>
-                    <input
-                      placeholder={f.placeholder}
-                      type={f.label === "Password" ? "password" : "text"}
-                      className="mt-1 w-full rounded-[9px] border border-line bg-surface px-2.5 py-2 font-mono text-[12.5px] outline-none focus:border-pine-400"
-                    />
-                  </label>
-                ))}
-                <div className="sm:col-span-2">
-                  <Button size="sm" onClick={() => toast("Mailbox verified", "good", "Test message sent and received")}>
-                    Test connection
-                  </Button>
-                </div>
-              </div>
+              integrations.email.connected ? <div className="mt-4 space-y-3"><p>{integrations.email.account} — IMAP/SMTP connected</p><Button variant="outline" onClick={handleDisconnectEmail}>Disconnect mailbox</Button></div> : <ManualMailboxForm />
             ) : (
               <div className="mt-4 rounded-[10px] border border-line bg-paper/50 p-3.5">
                 <div className="divide-y divide-line-soft">

@@ -19,7 +19,9 @@
     "test:gmail": "node --test src/tests/gmailIngestion.test.js",
     "test:gmail:database": "node scripts/test-gmail-database.mjs .env",
     "test:microsoft": "node --test src/tests/microsoftIngestion.test.js",
-    "test:microsoft:database": "node scripts/test-microsoft-database.mjs .env"
+    "test:microsoft:database": "node scripts/test-microsoft-database.mjs .env",
+    "test:imap": "node --test src/tests/imapIngestion.test.js",
+    "test:imap:database": "node scripts/test-imap-database.mjs .env"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

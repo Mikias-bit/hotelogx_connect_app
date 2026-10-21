@@ -354,6 +354,17 @@ model PmsIntegration {
 }
 
 model EmailIntegration {
+  imapUser String?
+  smtpUser String?
+  imapPassword String? @db.Text
+  smtpPassword String? @db.Text
+  imapSecurity String?
+  smtpSecurity String?
+  imapMailboxKey String?
+  imapUidValidity String?
+  imapLastUid String?
+  imapRecoveryUntilUid String?
+  mailVerifiedAt DateTime?
   id           String    @id @default(uuid())
   hotelId      String    @unique
   email        String
@@ -546,3 +557,29 @@ model MicrosoftSyncJob {
   renew Boolean @default(false)
   updatedAt DateTime @updatedAt
 }
+
+model ImapInboundMessage {
+  id String @id
+  hotelId String
+  mailboxKey String
+  mailbox String
+  providerMessageId String
+  conversationId String
+  threadId String?
+  sender String
+  subject String
+  internetMessageId String?
+  receivedAt DateTime
+  suppressReply Boolean @default(false)
+  status String @default("pending")
+  automationResult Json?
+  replyStatus String @default("pending")
+  outboundMessageId String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([hotelId, mailbox, providerMessageId])
+  @@index([hotelId, status])
+}
+
