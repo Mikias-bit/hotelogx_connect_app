@@ -60,7 +60,7 @@ function RootDocument() {
             appId: metaAppId,
             cookie: true,
             xfbml: true,
-            version: "v19.0",
+            version: import.meta.env.VITE_META_GRAPH_VERSION || "v25.0",
           });
         }
       };

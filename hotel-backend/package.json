@@ -21,7 +21,8 @@
     "test:microsoft": "node --test src/tests/microsoftIngestion.test.js",
     "test:microsoft:database": "node scripts/test-microsoft-database.mjs .env",
     "test:imap": "node --test src/tests/imapIngestion.test.js",
-    "test:imap:database": "node scripts/test-imap-database.mjs .env"
+    "test:imap:database": "node scripts/test-imap-database.mjs .env",
+    "test:whatsapp": "node --test src/tests/whatsappReal.test.js"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

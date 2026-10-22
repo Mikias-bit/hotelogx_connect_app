@@ -161,14 +161,3 @@ export const waTopologyOptions: { key: WaTopology; label: string; note: string }
 export function waLabel(type: WaConnectionType): string {
   return type === "guest" ? "Guest WhatsApp" : "Internal WhatsApp";
 }
-
-/** Stand-in for the identifiers Meta returns once Embedded Signup completes. */
-export function mockMetaIdentifiers(type: WaConnectionType, phone: string) {
-  const stamp = Date.now().toString().slice(-6);
-  return {
-    hotelId: "htl_mercier_01",
-    wabaId: `waba_${type === "guest" ? "1029" : "1044"}${stamp.slice(0, 2)}`,
-    phoneNumberId: `pn_${stamp}`,
-    displayPhoneNumber: phone,
-  };
-}

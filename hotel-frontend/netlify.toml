@@ -1,6 +1,10 @@
 [build]
   command = "vite build"
   publish = "dist/client"
+[build.environment]
+  VITE_META_APP_ID = "1018045903953347"
+  VITE_META_CONFIG_ID = "1587875666080875"
+  VITE_META_GRAPH_VERSION = "v25.0"
 [dev]
   command = "npm run dev"
   targetPort = 3000

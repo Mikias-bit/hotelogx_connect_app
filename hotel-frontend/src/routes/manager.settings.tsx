@@ -1,3 +1,4 @@
+import { OnboardingWhatsAppStep } from '@/components/OnboardingWhatsAppStep';
 import { ManualMailboxForm } from '@/components/ManualMailboxForm';
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -26,7 +27,6 @@ import {
   UserPlus,
   Users,
   Wand2,
-  X,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import {
@@ -698,13 +698,6 @@ function IntegrationsPanel() {
 
   // WhatsApp connection modal state
   const [waModalOpen, setWaModalOpen] = useState(false);
-  const [waTab, setWaTab] = useState<"meta" | "manual">("manual");
-  const [waPhone, setWaPhone] = useState(integrations.whatsapp.number || "");
-  const [waPhoneId, setWaPhoneId] = useState("");
-  const [waWabaId, setWaWabaId] = useState("");
-  const [waToken, setWaToken] = useState("");
-  const [isConnectingWa, setIsConnectingWa] = useState(false);
-  const [isTestingWa, setIsTestingWa] = useState(false);
 
   // Sync real status from backend on mount and handle OAuth redirect
   useEffect(() => {
@@ -759,12 +752,12 @@ function IntegrationsPanel() {
               connected: Boolean(data.connected),
               number: data.number || s.integrations.whatsapp.number,
               waba: data.waba || s.integrations.whatsapp.waba,
-              quality: data.quality || "High",
+              quality: data.quality || "Unknown",
               templates: data.templates ?? 0,
             },
           },
         }));
-        if (data.number) setWaPhone(data.number);
+
       }
     }).catch(() => {});
   }, []);
@@ -799,59 +792,6 @@ function IntegrationsPanel() {
     }
   };
 
-  const handleConnectManualWhatsApp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!waPhone.trim() || !waPhoneId.trim() || !waToken.trim()) {
-      toast("Missing fields", "urgent", "Phone number, Phone Number ID, and Access Token are required");
-      return;
-    }
-    setIsConnectingWa(true);
-    try {
-      let hotelId = profile.id;
-      if (!hotelId && typeof window !== "undefined") {
-        try {
-          const rawUser = window.localStorage.getItem("hotelogx.user.v1");
-          if (rawUser) {
-            const u = JSON.parse(rawUser);
-            if (u?.hotelId) hotelId = u.hotelId;
-          }
-        } catch {}
-      }
-      const res: any = await api.connectManualWhatsApp({
-        displayPhoneNumber: waPhone.trim(),
-        phoneNumberId: waPhoneId.trim(),
-        wabaId: waWabaId.trim() || undefined,
-        accessToken: waToken.trim(),
-        hotelId: hotelId || undefined,
-        targetType: "guest",
-      });
-
-      if (res && (res.success || res.status === "connected" || res.data?.status === "connected")) {
-        store.setState((s) => ({
-          ...s,
-          integrations: {
-            ...s.integrations,
-            whatsapp: {
-              connected: true,
-              number: waPhone.trim(),
-              waba: waWabaId.trim() ? `WABA · ${waWabaId.trim()}` : "Meta Business Account",
-              quality: "High",
-              templates: 0,
-            },
-          },
-        }));
-        toast("WhatsApp connected", "good", `${waPhone.trim()} linked successfully`);
-        setWaModalOpen(false);
-      } else {
-        toast("Connection response", "urgent", res?.message || "Could not verify credentials");
-      }
-    } catch (err: any) {
-      toast("Connection error", "urgent", err?.message || "Failed to connect WhatsApp");
-    } finally {
-      setIsConnectingWa(false);
-    }
-  };
-
   const handleDisconnectWhatsApp = async () => {
     try {
       await api.disconnectWhatsApp();
@@ -868,24 +808,7 @@ function IntegrationsPanel() {
     }
   };
 
-  const handleTestWhatsApp = async () => {
-    setIsTestingWa(true);
-    try {
-      const targetNumber = integrations.whatsapp.number || profile.phone || "+91 9876543210";
-      const res: any = await api.sendWhatsAppTestMessage(targetNumber);
-      if (res && res.simulated) {
-        toast("Test message simulated", "good", `Sent to ${targetNumber} (Simulator mode active)`);
-      } else if (res && res.success) {
-        toast("Test message delivered", "good", `Sent to ${targetNumber}`);
-      } else {
-        toast("Test message dispatched", "good", `Sent to ${targetNumber}`);
-      }
-    } catch (err: any) {
-      toast("Test dispatch", "attend", err?.message || "Test message sent to local simulator");
-    } finally {
-      setIsTestingWa(false);
-    }
-  };
+  const handleTestWhatsApp = () => setWaModalOpen(true);
 
   const steps = [
     { key: "pms" as const, label: "Property management system", done: integrations.pms.connected, icon: Server },
@@ -1107,10 +1030,10 @@ function IntegrationsPanel() {
                   <Button
                     size="sm"
                     variant="quiet"
-                    disabled={isTestingWa}
+                    disabled={false}
                     onClick={handleTestWhatsApp}
                   >
-                    {isTestingWa ? "Testing..." : "Test connection"}
+                    Test connection
                   </Button>
                 </div>
               </div>
@@ -1136,149 +1059,14 @@ function IntegrationsPanel() {
         )}
       </div>
 
-      {/* WhatsApp Connection Modal */}
-      {waModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4 backdrop-blur-xs">
-          <div className="rise w-full max-w-lg overflow-hidden rounded-card border border-line bg-surface shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-5 py-3.5 bg-paper/50">
-              <div className="flex items-center gap-2">
-                <MessageCircle className="size-5 text-wa" />
-                <h3 className="text-[15px] font-medium text-ink">Connect WhatsApp Business</h3>
-              </div>
-              <button
-                onClick={() => setWaModalOpen(false)}
-                className="text-ink-4 hover:text-ink transition-colors p-1"
-                aria-label="Close"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-
-            <div className="flex border-b border-line bg-surface px-5">
-              <button
-                onClick={() => setWaTab("manual")}
-                className={cn(
-                  "border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors",
-                  waTab === "manual" ? "border-pine-600 text-pine-600" : "border-transparent text-ink-3 hover:text-ink"
-                )}
-              >
-                Direct API Credentials
-              </button>
-              <button
-                onClick={() => setWaTab("meta")}
-                className={cn(
-                  "border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors",
-                  waTab === "meta" ? "border-pine-600 text-pine-600" : "border-transparent text-ink-3 hover:text-ink"
-                )}
-              >
-                Meta / Facebook Login
-              </button>
-            </div>
-
-            <div className="p-5">
-              {waTab === "manual" ? (
-                <form onSubmit={handleConnectManualWhatsApp} className="space-y-3.5">
-                  <p className="text-[12.5px] text-ink-3">
-                    Connect your WhatsApp Business Account directly using your Meta Cloud API identifiers from the Meta Developer Console.
-                  </p>
-                  <div>
-                    <label className="block text-[12px] font-medium text-ink-2 mb-1">Display Phone Number</label>
-                    <input
-                      type="text"
-                      placeholder="+91 9876543210"
-                      value={waPhone}
-                      onChange={(e) => setWaPhone(e.target.value)}
-                      required
-                      className="w-full rounded-[8px] border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-pine-600 focus:ring-1 focus:ring-pine-600 font-mono"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[12px] font-medium text-ink-2 mb-1">Phone Number ID</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 104829384729102"
-                        value={waPhoneId}
-                        onChange={(e) => setWaPhoneId(e.target.value)}
-                        required
-                        className="w-full rounded-[8px] border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-pine-600 focus:ring-1 focus:ring-pine-600 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-ink-2 mb-1">WABA ID (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 293847291029384"
-                        value={waWabaId}
-                        onChange={(e) => setWaWabaId(e.target.value)}
-                        className="w-full rounded-[8px] border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-pine-600 focus:ring-1 focus:ring-pine-600 font-mono"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-medium text-ink-2 mb-1">Permanent Meta Access Token</label>
-                    <input
-                      type="password"
-                      placeholder="EAAG..."
-                      value={waToken}
-                      onChange={(e) => setWaToken(e.target.value)}
-                      required
-                      className="w-full rounded-[8px] border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-pine-600 focus:ring-1 focus:ring-pine-600 font-mono"
-                    />
-                  </div>
-
-                  <div className="pt-2 flex justify-end gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => setWaModalOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" size="sm" disabled={isConnectingWa}>
-                      {isConnectingWa ? "Connecting..." : "Save & Connect WhatsApp"}
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <div className="space-y-4 text-center py-3">
-                  <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-wa/10 text-wa">
-                    <MessageCircle className="size-6" />
-                  </div>
-                  <div className="max-w-[360px] mx-auto">
-                    <h4 className="text-[14.5px] font-medium text-ink">Meta Embedded Signup</h4>
-                    <p className="mt-1 text-[12.5px] text-ink-3">
-                      Sign in directly to Meta to select your portfolio and link your WhatsApp Business Number in 1-click.
-                    </p>
-                  </div>
-                  <Button
-                    className="w-full justify-center"
-                    onClick={() => {
-                      const metaAppId = import.meta.env.VITE_META_APP_ID;
-                      const metaConfigId = import.meta.env.VITE_META_CONFIG_ID;
-                      const currentHotelId = profile.id || "";
-                      if (!metaAppId || !metaConfigId) {
-                        toast("Meta Configuration", "attend", "Please use Direct API Credentials or configure META_APP_ID in .env");
-                        setWaTab("manual");
-                        return;
-                      }
-                      const backendApiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
-                      const callbackUrl = `${backendApiBase}/whatsapp/oauth/callback`;
-                      const statePayload = btoa(JSON.stringify({ hotelId: currentHotelId, targetType: "guest" }));
-                      const directOAuthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${encodeURIComponent(
-                        metaAppId
-                      )}&config_id=${encodeURIComponent(
-                        metaConfigId
-                      )}&redirect_uri=${encodeURIComponent(
-                        callbackUrl
-                      )}&response_type=code&state=${encodeURIComponent(statePayload)}&scope=whatsapp_business_management,whatsapp_business_messaging`;
-                      window.open(directOAuthUrl, "MetaWhatsAppOAuth", "width=600,height=700,scrollbars=yes");
-                    }}
-                  >
-                    Continue with Facebook
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
+      {waModalOpen && <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/30 p-6">
+        <div className="mx-auto max-w-xl space-y-3">
+          <Button onClick={() => setWaModalOpen(false)}>Close</Button>
+          <OnboardingWhatsAppStep connectionType="guest" />
+          <OnboardingWhatsAppStep connectionType="internal" />
         </div>
-      )}
+      </div>}
+
     </div>
   );
 }

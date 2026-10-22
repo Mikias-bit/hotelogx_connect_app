@@ -1,10 +1,15 @@
+import { api } from '@/lib/api';
+import { useCurrentUser } from '@/lib/session';
 import { useEffect, useRef, useState } from "react";
-import { CheckCheck, Phone, Smartphone } from "lucide-react";
-import { useApp, waChoose } from "@/lib/store";
+import { Phone, Smartphone } from "lucide-react";
+import { useApp, waChoose, toast, store } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Eyebrow } from "./ui";
 
 export function WhatsAppOps({ department }: { department?: "Housekeeping" | "Maintenance" }) {
+  const user = useCurrentUser();
+  const [reply, setReply] = useState('');
+  const [sending, setSending] = useState(false);
   const threads = useApp((s) => s.waThreads);
   const visible = department ? threads.filter((t) => t.department === department) : threads;
   const [activeId, setActiveId] = useState(visible[0]?.id ?? "");
@@ -82,7 +87,7 @@ export function WhatsAppOps({ department }: { department?: "Housekeeping" | "Mai
           {thread.messages.map((m) => (
             <div key={m.id}>
               <div className="max-w-[86%] rounded-[10px] rounded-tl-[3px] bg-white px-2.5 py-2 shadow-[0_1px_1px_rgba(11,20,26,0.13)]">
-                <p className="text-[10px] font-semibold text-wa">Hotelogx Connect</p>
+                <p className="text-[10px] font-semibold text-wa">{m.from === 'staff' ? thread.contact : 'Hotelogx Connect'}</p>
                 <p className="mt-1 text-[12.5px] leading-snug whitespace-pre-line text-[#111b21]">{m.body}</p>
                 <p className="tnum mt-1 text-right font-mono text-[9.5px] text-[#667781]">{m.at}</p>
                 {m.buttons && m.buttons.length > 0 && (
@@ -114,7 +119,6 @@ export function WhatsAppOps({ department }: { department?: "Housekeeping" | "Mai
                     <p className="text-[12.5px] leading-snug text-[#111b21]">{m.chosen}</p>
                     <p className="tnum mt-0.5 flex items-center justify-end gap-1 font-mono text-[9.5px] text-[#667781]">
                       {m.at}
-                      <CheckCheck className="size-3 text-[#53bdeb]" />
                     </p>
                   </div>
                 </div>
@@ -124,10 +128,20 @@ export function WhatsAppOps({ department }: { department?: "Housekeeping" | "Mai
         </div>
 
         <footer className="border-t border-line bg-[#f0f2f0] px-3 py-2">
-          <p className="text-[10.5px] leading-snug text-ink-4">
-            Interactive buttons, lists and Flows are sent from your WhatsApp Business number. Staff never open the dashboard to
-            update a room.
-          </p>
+          {user?.role === 'manager' && <form className="flex gap-2" onSubmit={async e => {
+            e.preventDefault(); if (!reply.trim() || sending) return; setSending(true);
+            try {
+              await api.replyToWhatsAppThread(thread.id, reply);
+              setReply(''); const rows = await api.getWaThreads();
+              if (rows) store.setState(s => ({ ...s, waThreads: rows }));
+              toast('Meta accepted the reply', 'good', thread.contact);
+            } catch (error) { toast('Reply failed', 'urgent', error instanceof Error ? error.message : 'Please retry'); }
+            finally { setSending(false); }
+          }}>
+            <input aria-label="WhatsApp reply" className="min-w-0 flex-1 rounded border p-2 text-sm" value={reply} onChange={e => setReply(e.target.value)} />
+            <button type="submit" disabled={sending || !reply.trim()}>{sending ? 'Sending?' : 'Send'}</button>
+          </form>}
+          <p className="mt-2 text-[10.5px] text-ink-4">Free-text replies require a recent inbound message from this recipient.</p>
         </footer>
       </div>
     </div>

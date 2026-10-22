@@ -17,7 +17,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -223,6 +223,7 @@ export const api = {
 
   // WhatsApp Simulator
   getWaThreads: () => request<any[]>('/whatsapp/threads'),
+  replyToWhatsAppThread: (id: string, message: string) => request<any>(`/whatsapp/threads/${encodeURIComponent(id)}/reply`, { method: 'POST', body: JSON.stringify({ message }) }),
   sendWaAction: (data: any) =>
     request('/whatsapp/action', {
       method: 'POST',
@@ -342,6 +343,7 @@ export const api = {
     phoneNumberId?: string;
     displayPhoneNumber?: string;
     targetType?: string;
+    pin?: string;
     hotelId?: string;
   }) =>
     request<any>('/whatsapp/embedded-signup', {
@@ -352,9 +354,10 @@ export const api = {
   connectManualWhatsApp: (data: {
     phoneNumberId: string;
     accessToken: string;
-    displayPhoneNumber: string;
+    displayPhoneNumber?: string;
     wabaId?: string;
     targetType?: string;
+    pin?: string;
     hotelId?: string;
   }) =>
     request<any>('/whatsapp/connect-manual', {
@@ -366,10 +369,10 @@ export const api = {
     request<any>('/whatsapp/disconnect', {
       method: 'POST',
     }),
-  sendWhatsAppTestMessage: (to: string, message?: string) =>
+  sendWhatsAppTestMessage: (to: string, message?: string, targetType = 'guest') =>
     request<any>('/whatsapp/send', {
       method: 'POST',
-      body: JSON.stringify({ to, message: message || 'Hello! This is a test message from Hotelogx Connect.' }),
+      body: JSON.stringify({ to, targetType, message: message || 'Hello! This is a test message from Hotelogx Connect.' }),
     }),
 };
 

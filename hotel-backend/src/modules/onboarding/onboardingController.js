@@ -1,8 +1,8 @@
+import { verifiedConnection } from '../whatsapp/MetaClient.js';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 import { inviteStaff } from '../users/invitationService.js';
-import { encryptToken } from '../../utils/tokenCrypto.js';
 
 // Columns are provisioned by Prisma migrations before deployment.
 export async function ensureWhatsAppColumns() {}
@@ -37,8 +37,8 @@ export const getOnboardingStatus = async (req, res, next) => {
 
     const isPmsConnected = pmsInteg?.status === 'connected';
     const isEmailConnected = emailInteg?.status === 'connected';
-    const hasWaGuest = waIntegs.some((w) => w.targetType === 'guest' || w.targetType === 'both');
-    const hasWaInternal = waIntegs.some((w) => w.targetType === 'internal' || w.targetType === 'both');
+    const hasWaGuest = waIntegs.some(w => verifiedConnection(w) && ['guest', 'both'].includes(w.targetType));
+    const hasWaInternal = waIntegs.some(w => verifiedConnection(w) && ['internal', 'both'].includes(w.targetType));
 
     if (isPmsConnected && !stepsDone.includes('pms')) stepsDone.push('pms');
     if (isEmailConnected && !stepsDone.includes('email')) stepsDone.push('email');
@@ -49,8 +49,8 @@ export const getOnboardingStatus = async (req, res, next) => {
       profile: stepsDone.includes('profile'),
       pms: isPmsConnected || stepsDone.includes('pms'),
       email: isEmailConnected || stepsDone.includes('email'),
-      'wa-guest': hasWaGuest || stepsDone.includes('wa-guest'),
-      'wa-internal': hasWaInternal || stepsDone.includes('wa-internal'),
+      'wa-guest': hasWaGuest,
+      'wa-internal': hasWaInternal,
       knowledge: stepsDone.includes('knowledge'),
       users: stepsDone.includes('users'),
       ai: stepsDone.includes('ai'),
@@ -264,6 +264,13 @@ export const saveOnboardingStep = async (req, res, next) => {
     const hotelId = req.user?.hotelId;
     if (!hotelId) return errorResponse(res, 'Authentication and hotel context required', 401);
     const { stepKey, data } = req.body;
+    if (['wa-guest', 'wa-internal'].includes(stepKey)) {
+      if (req.user.role !== 'manager') return errorResponse(res, 'Hotel manager access required', 403);
+      const rows = await prisma.whatsAppIntegration.findMany({ where: { hotelId, targetType: { in: [stepKey.slice(3), 'both'] } } });
+      if (!rows.some(verifiedConnection)) return errorResponse(res, 'Complete verified Meta authorization first', 409);
+      return successResponse(res, { stepKey }, 'Verified WhatsApp step saved');
+    }
+
     if (stepKey === 'email') {
       if (req.user?.role !== 'manager') return errorResponse(res,'Hotel manager access required',403);
       const integration=await prisma.emailIntegration.findUnique({ where:{ hotelId } });
@@ -341,51 +348,6 @@ export const saveOnboardingStep = async (req, res, next) => {
         where: { id: hotel.id },
         data: updateData,
       }).catch(() => {});
-    }
-
-    // Ensure WhatsAppIntegration table columns are ready
-    if (stepKey === 'wa-guest' || stepKey === 'wa-internal') {
-      await ensureWhatsAppColumns();
-      const targetType = stepKey === 'wa-guest' ? 'guest' : 'internal';
-      const rawPhone = data?.phone || data?.displayPhoneNumber || (targetType === 'guest' ? hotel?.whatsappNumber : hotel?.phone) || '';
-      const cleanPhone = String(rawPhone).replace(/\D/g, '');
-      const phoneNumberId = data?.phoneNumberId || `phone_${cleanPhone || Date.now()}`;
-      const wabaId = data?.wabaId || `waba_${hotelId}_${targetType}`;
-      const accessToken = data?.accessToken || null;
-
-      if (cleanPhone || phoneNumberId) {
-        try {
-          await prisma.whatsAppIntegration.upsert({
-            where: {
-              hotelId_targetType: {
-                hotelId,
-                targetType,
-              },
-            },
-            update: {
-              phoneNumber: cleanPhone,
-              displayPhoneNumber: rawPhone,
-              phoneNumberId,
-              wabaId,
-              ...(accessToken ? { accessToken } : {}),
-              status: 'connected',
-              lastError: null,
-            },
-            create: {
-              hotelId,
-              targetType,
-              phoneNumber: cleanPhone,
-              displayPhoneNumber: rawPhone,
-              phoneNumberId,
-              wabaId,
-              accessToken,
-              status: 'connected',
-            },
-          });
-        } catch (waErr) {
-          console.warn('[Onboarding WhatsAppIntegration Upsert Warning]:', waErr.message);
-        }
-      }
     }
 
     // Log activity if an email mailbox is connected

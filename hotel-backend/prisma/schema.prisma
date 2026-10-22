@@ -406,8 +406,14 @@ model WhatsAppIntegration {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @default(now()) @updatedAt
 
+  verifiedAt         DateTime?
+  tokenExpiresAt     DateTime?
+  lastInboundAt      DateTime?
+  lastOutboundAt     DateTime?
+  lastDeliveryStatus String?
+
   @@unique([hotelId, targetType])
-  @@index([phoneNumberId])
+  @@unique([phoneNumberId])
   @@index([hotelId])
 }
 
@@ -583,3 +589,18 @@ model ImapInboundMessage {
   @@index([hotelId, status])
 }
 
+
+model WhatsAppReceipt {
+  id String @id
+  hotelId String
+  phoneNumberId String
+  sender String
+  status String @default("pending")
+  replyText String? @db.Text
+  replyMessageId String?
+  providerMessageId String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([hotelId, status])
+}

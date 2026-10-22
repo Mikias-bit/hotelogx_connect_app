@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { applyPmsLiveUpdate } from "./store";
-import { API_BASE_URL } from "./api";
+import { applyPmsLiveUpdate, store } from "./store";
+import { API_BASE_URL, api } from "./api";
 
 /**
  * Hook to maintain a live SSE connection with the backend for real-time PMS and task updates.
@@ -67,6 +67,13 @@ export function useRealtimeSync(hotelId: string = "hotel-mercier") {
         } catch (err) {
           console.error("[Realtime] Error parsing activity:new", err);
         }
+      });
+
+      es.addEventListener("whatsapp:updated", () => {
+        const currentToken = localStorage.getItem('token');
+        void api.getWaThreads().then(rows => {
+          if (isMounted && rows && localStorage.getItem('token') === currentToken) store.setState(s => ({ ...s, waThreads: rows }));
+        });
       });
 
       es.addEventListener("conversation:updated", (event) => {

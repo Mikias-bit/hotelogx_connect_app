@@ -36,7 +36,7 @@ import type {
   WaTopology,
   WaThread,
 } from "./types";
-import { detectEmail, mockMetaIdentifiers } from "./onboarding";
+import { detectEmail } from "./onboarding";
 import { clockNow, money, uid } from "./utils";
 
 type Toast = { id: string; text: string; detail?: string; tone: "good" | "attend" | "urgent" | "ai" };
@@ -578,15 +578,6 @@ export async function assignTask(taskId: string, assignee: string) {
 
 /* ----------------------------------------------------------------- rooms -- */
 
-const statusFromButton: Record<string, RoomStatus> = {
-  "Start Cleaning": "Cleaning",
-  Cleaned: "Clean",
-  "Needs Inspection": "Clean",
-  "Guest Inside": "Guest Inside",
-  DND: "DND",
-  "Maintenance Issue": "Maintenance",
-};
-
 export async function setRoomStatus(
   roomNumber: string,
   status: RoomStatus,
@@ -722,6 +713,11 @@ export function applyPmsLiveUpdate(eventType: string, data: any) {
       kind: data.kind || "room",
       text: data.text,
       meta: data.meta || "Mews PMS",
+    });
+  } else if (eventType === "conversation:updated" && data?.channel === 'whatsapp') {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+    void api.getConversations().then(rows => {
+      if (rows && typeof localStorage !== 'undefined' && localStorage.getItem('token') === token) set(() => ({ conversations: rows }));
     });
   } else if (eventType === "conversation:updated" && (data?.conversationId || data?.conversation)) {
     const convId = data.conversationId || data.conversation?.id;
@@ -895,182 +891,15 @@ export async function assignIssue(issueId: string, assignee: string) {
 
 /* ------------------------------------------------------- whatsapp engine -- */
 
-function roomFromBody(body: string) {
-  const match = body.match(/Room:?\s*(\d{3})/) ?? body.match(/\b(\d{3})\b/);
-  return match?.[1];
-}
-
-function waPush(threadId: string, body: string, buttons?: string[]) {
-  set((s) => ({
-    waThreads: s.waThreads.map((t) =>
-      t.id === threadId
-        ? {
-          ...t,
-          messages: [
-            ...t.messages,
-            { id: uid("wa"), from: "hotelogx" as const, at: clockNow(), body, buttons: buttons?.map((label) => ({ label })) },
-          ],
-        }
-        : t,
-    ),
-  }));
-}
-
 export async function waChoose(threadId: string, messageId: string, label: string) {
-  const thread = store.state.waThreads.find((t) => t.id === threadId);
-  const message = thread?.messages.find((m) => m.id === messageId);
-  if (!thread || !message || message.chosen) return;
-
-  set((s) => ({
-    waThreads: s.waThreads.map((t) =>
-      t.id === threadId ? { ...t, messages: t.messages.map((m) => (m.id === messageId ? { ...m, chosen: label } : m)) } : t,
-    ),
-  }));
-
-  const room = roomFromBody(message.body) || (/^\d{3}$/.test(label) ? label : undefined);
-  api.sendWaAction({ threadId, messageId, label, room, staffName: thread.contact });
-
-  /* housekeeping ---------------------------------------------------------- */
-  if (thread.department === "Housekeeping") {
-    if (/^\d{3}$/.test(label)) {
-      const target = store.state.rooms.find((r) => r.number === label);
-      waPush(
-        threadId,
-        `Room ${label} — ${target?.cleaningType ?? "Departure"}${target?.arrivalTime ? `\nArrival at ${target.arrivalTime}, please prioritise.` : ""}\n\nChoose status:`,
-        ["Start Cleaning", "Guest Inside", "DND", "Maintenance Issue"],
-      );
-      return;
-    }
-    if (label === "Try again now" && room) {
-      waPush(threadId, `Room ${room} — choose status:`, ["Start Cleaning", "Guest Inside", "DND", "Maintenance Issue"]);
-      return;
-    }
-
-    const mapped = statusFromButton[label];
-    if (!mapped || !room) return;
-
-    if (label === "Maintenance Issue") {
-      await setRoomStatus(room, "Maintenance", "whatsapp");
-      const issueId = createIssue({
-        room,
-        title: "Issue reported during cleaning",
-        detail: `${thread.contact} flagged a problem in ${room} while cleaning. Awaiting technician assessment.`,
-        priority: "High",
-        reportedBy: thread.contact,
-        via: "Housekeeping via WhatsApp",
-      });
-      createTask({
-        title: `Check reported issue in ${room}`,
-        detail: `Raised by ${thread.contact} during the clean. Ticket ${issueId}.`,
-        room,
-        department: "Maintenance",
-        priority: "High",
-        source: "Housekeeping",
-      });
-      waPush(
-        threadId,
-        `Thank you. Ticket ${issueId} has been opened for room ${room} and our technical team has been notified on WhatsApp. Reception knows the room is held.\n\nWhen you can continue:`,
-        ["Start Cleaning", "Guest Inside", "DND"],
-      );
-      waPush("wa-peter", `New Maintenance Request\n\nRoom: ${room}\nIssue: Issue reported during cleaning\nPriority: High\nReported by: ${thread.contact} via WhatsApp`, [
-        "Accept",
-        "Unable to Handle",
-      ]);
-      return;
-    }
-
-    await setRoomStatus(room, mapped, "whatsapp");
-
-    if (label === "Start Cleaning") {
-      waPush(threadId, `Room ${room} — cleaning in progress since ${clockNow()}.\n\nWhen you are done:`, [
-        "Cleaned",
-        "Needs Inspection",
-        "Maintenance Issue",
-      ]);
-      return;
-    }
-    if (label === "Cleaned" || label === "Needs Inspection") {
-      const target = store.state.rooms.find((r) => r.number === room);
-      const next = store.state.rooms.find((r) => r.status === "Dirty" && r.cleaner === thread.contact);
-      waPush(
-        threadId,
-        `Thank you. ${room} is released${target?.arrivalTime ? ` and reception has been told it is ready for the ${target.arrivalTime} arrival` : " and the dashboards are updated"}.${next ? `\n\nNext room: ${next.number} — ${next.cleaningType}${next.arrivalTime ? `, arrival ${next.arrivalTime}` : ""}.` : "\n\nThat is your list finished — thank you."
-        }`,
-        next ? ["Start Cleaning", "Guest Inside", "DND", "Maintenance Issue"] : undefined,
-      );
-      return;
-    }
-    if (label === "DND" || label === "Guest Inside") {
-      waPush(
-        threadId,
-        `Noted — ${room} marked ${label}. I will remind you in 90 minutes and reception can see the room is not available yet.`,
-        ["Try again now"],
-      );
-      return;
-    }
-    if (label === "Delivered" || label.toLowerCase().includes("delivered") || label === "Done") {
-      const activeTask = store.state.tasks.find(
-        (t) => t.department === "Housekeeping" && t.status !== "Completed" && (room ? t.room === room : true),
-      );
-      if (activeTask) {
-        await setTaskStatus(activeTask.id, "Completed", `Delivered by ${thread.contact} via WhatsApp`);
-      }
-      waPush(
-        threadId,
-        `Thank you ${thread.contact.split(" ")[0]} — delivery confirmed${room ? ` for Room ${room}` : ""}. Guest and front desk notified automatically.`,
-      );
-      return;
-    }
-    return;
-  }
-
-  /* maintenance ----------------------------------------------------------- */
-  if (thread.department === "Maintenance") {
-    const issue = room ? store.state.issues.find((i) => i.room === room && i.status !== "Completed") : undefined;
-
-    if (label === "Accept" && issue) {
-      await assignIssue(issue.id, thread.contact);
-      waPush(
-        threadId,
-        `Thank you. ${issue.id} is assigned to you and the guest has been told a technician is on the way.\n\nRoom ${issue.room} — when you have finished:`,
-        ["Completed", "Parts Required", "External Technician Required"],
-      );
-      return;
-    }
-    if (label === "Unable to Handle" && issue) {
-      await setIssueStatus(issue.id, "Escalated", `${thread.contact} cannot handle this — external help needed`);
-      waPush(threadId, `Understood. ${issue.id} has been escalated to the manager and an external technician will be arranged.`);
-      return;
-    }
-    if (label === "Completed" && issue) {
-      await setIssueStatus(issue.id, "Completed", `${thread.contact} marked the work complete on WhatsApp`);
-      waPush(
-        threadId,
-        `Thank you. ${issue.id} is closed, room ${issue.room} has gone back to housekeeping for a recheck and the guest has been informed automatically.`,
-      );
-      return;
-    }
-    if (label === "Parts Required" && issue) {
-      await setIssueStatus(issue.id, "Waiting Parts", `${thread.contact} needs parts before the work can continue`);
-      await createTask({
-        title: `Order parts for ${issue.id} (${issue.room})`,
-        detail: issue.title,
-        room: issue.room,
-        department: "Maintenance",
-        priority: "Normal",
-        source: "AI Detection",
-        assignee: thread.contact,
-      });
-      waPush(threadId, `Noted — ${issue.id} is on hold for parts. A purchase task has been created and reception knows the room stays out of service.`);
-      return;
-    }
-    if (label === "External Technician Required" && issue) {
-      await setIssueStatus(issue.id, "Escalated", "External technician required — manager approval needed");
-      waPush(threadId, `Understood. ${issue.id} has been escalated for an external technician and the manager can see it on the dashboard.`);
-      return;
-    }
-    return;
-  }
+  const thread = store.state.waThreads.find(t => t.id === threadId);
+  if (!thread) return;
+  try {
+    await api.sendWaAction({ threadId, messageId, label, staffName: thread.contact });
+    const rows = await api.getWaThreads();
+    if (rows) set(() => ({ waThreads: rows }));
+    toast('Action saved', 'good', label);
+  } catch (error) { toast('Action failed', 'urgent', error instanceof Error ? error.message : 'Please retry'); }
 }
 
 /* -------------------------------------------------------------- settings -- */
@@ -1096,12 +925,7 @@ export function setEmailProvider(provider: "google" | "microsoft" | "other", acc
   toast("Mailbox connected", "good", account);
 }
 
-export function toggleWhatsApp() {
-  set((s) => ({
-    integrations: { ...s.integrations, whatsapp: { ...s.integrations.whatsapp, connected: !s.integrations.whatsapp.connected } },
-  }));
-  toast(store.state.integrations.whatsapp.connected ? "WhatsApp connected" : "WhatsApp disconnected", store.state.integrations.whatsapp.connected ? "good" : "urgent");
-}
+
 
 export async function updateHotelProfile(patch: Partial<HotelProfile>): Promise<boolean> {
   try { await api.saveHotelProfile(patch); }
@@ -1382,8 +1206,8 @@ export function setWaTopology(waTopology: WaTopology) {
     onboarding: {
       ...s.onboarding,
       waTopology,
-      // a single number covers both roles; guest-only leaves staff on the dashboard
-      done: { ...s.onboarding.done, "wa-internal": waTopology === "separate" ? s.onboarding.done["wa-internal"] : true },
+      // Topology alone does not establish a verified connection.
+      done: { ...s.onboarding.done, "wa-internal": s.onboarding.waInternal.state === "connected" },
     },
   }));
   if (typeof window !== "undefined" && window.localStorage.getItem("token")) {
@@ -1611,90 +1435,20 @@ export function failEmailConnection(message: string) {
  * Handles the callback of Meta's Embedded Signup or simulator: stores verified identifiers
  * and synchronizes with backend multi-tenant database.
  */
-export function connectWhatsAppNumber(
-  connectionType: WaConnectionType,
-  phone: string,
-  metaData?: { wabaId?: string; phoneNumberId?: string; displayPhoneNumber?: string; code?: string }
-) {
-  const fallbackIds = mockMetaIdentifiers(connectionType, phone);
-  const wabaId = metaData?.wabaId || fallbackIds.wabaId;
-  const phoneNumberId = metaData?.phoneNumberId || fallbackIds.phoneNumberId;
-  const displayPhoneNumber = metaData?.displayPhoneNumber || phone || fallbackIds.displayPhoneNumber;
-  const currentHotelId = (store.state.hotelProfile as any)?.id || "hotel-mercier";
-
-  const connection: WaConnection = {
-    state: "connected",
-    connectionType,
-    hotelId: currentHotelId,
-    wabaId,
-    phoneNumberId,
-    displayPhoneNumber,
-    canSend: true,
-    canReceive: true,
-    lastActivity: "just now",
-    error: null,
+export async function refreshWhatsAppStatus() {
+  const result = await api.getWhatsAppStatus();
+  const rows = result?.connections || [];
+  const connection = (kind: WaConnectionType): WaConnection => {
+    const row = rows.find((r: any) => r.connected && [kind, 'both'].includes(r.targetType));
+    return { state: row ? 'connected' : 'not-started', connectionType: kind, hotelId: row?.hotelId || null,
+      wabaId: row?.wabaId || null, phoneNumberId: row?.phoneNumberId || null, displayPhoneNumber: row?.number || null,
+      canSend: Boolean(row), canReceive: Boolean(row?.lastInboundAt), lastActivity: row?.lastInboundAt || null, error: null };
   };
-
-  set((s) => {
-    const single = s.onboarding.waTopology === "single";
-    return {
-      onboarding: {
-        ...s.onboarding,
-        waGuest: connectionType === "guest" || single ? { ...connection, connectionType: "guest" } : s.onboarding.waGuest,
-        waInternal:
-          connectionType === "internal" || single ? { ...connection, connectionType: "internal" } : s.onboarding.waInternal,
-        done: {
-          ...s.onboarding.done,
-          "wa-guest": connectionType === "guest" || single ? true : s.onboarding.done["wa-guest"],
-          "wa-internal": connectionType === "internal" || single ? true : s.onboarding.done["wa-internal"],
-        },
-      },
-      integrations: {
-        ...s.integrations,
-        whatsapp: {
-          connected: true,
-          number: connectionType === "guest" || single ? displayPhoneNumber : s.integrations.whatsapp.number || displayPhoneNumber,
-          waba: `${s.hotelProfile.legalName || s.hotelProfile.name} · ${wabaId}`,
-          quality: "Pending",
-          templates: 0,
-        },
-      },
-    };
-  });
-
-  // Call backend Embedded Signup exchange or onboarding persistence
-  if (metaData?.code) {
-    api.exchangeMetaEmbeddedSignup({
-      code: metaData.code,
-      wabaId,
-      phoneNumberId,
-      displayPhoneNumber,
-      targetType: connectionType,
-      hotelId: currentHotelId,
-    });
-  }
-
-  api.saveOnboardingStep(connectionType === "guest" ? "wa-guest" : "wa-internal", {
-    phone: displayPhoneNumber,
-    displayPhoneNumber,
-    phoneNumberId,
-    wabaId,
-    connectionType,
-  });
-  toast(`${connectionType === "guest" ? "Guest" : "Internal"} WhatsApp connected`, "good", displayPhoneNumber);
-}
-
-export function testWhatsApp(connectionType: WaConnectionType) {
-  set((s) => ({
-    onboarding: {
-      ...s.onboarding,
-      waGuest:
-        connectionType === "guest" ? { ...s.onboarding.waGuest, lastActivity: "just now" } : s.onboarding.waGuest,
-      waInternal:
-        connectionType === "internal" ? { ...s.onboarding.waInternal, lastActivity: "just now" } : s.onboarding.waInternal,
-    },
-  }));
-  toast("Test message delivered", "good", connectionType === "guest" ? "Sent to your own number" : "Sent to the duty manager");
+  const guest = connection('guest'), internal = connection('internal');
+  set(s => ({ onboarding: { ...s.onboarding, waGuest: guest, waInternal: internal,
+    done: { ...s.onboarding.done, 'wa-guest': guest.state === 'connected', 'wa-internal': internal.state === 'connected' } },
+    integrations: { ...s.integrations, whatsapp: { connected: Boolean(result?.connected), number: result?.number || '', waba: result?.wabaId || '', quality: result?.quality || 'Unknown', templates: 0 } } }));
+  return result;
 }
 
 export async function addOnboardingInvite(email: string, role: Role): Promise<boolean> {
@@ -2013,8 +1767,8 @@ export async function initBackendSync() {
               connected: waConnected,
               number: onboardingData.hotelProfile?.whatsappNumber || s.hotelProfile.whatsappNumber || "",
               waba: waConnected ? `${s.hotelProfile.legalName || 'Hotel'} · WABA Connected` : "",
-              quality: "High",
-              templates: waConnected ? 11 : 0,
+              quality: "Unknown",
+              templates: 0,
             },
           },
         }));

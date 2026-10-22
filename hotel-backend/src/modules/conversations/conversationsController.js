@@ -322,7 +322,7 @@ export const sendReply = async (req, res, next) => {
 
     const message = await prisma.message.create({
       data: {
-        id: msgId,
+        id: targetChannel === 'whatsapp' && dispatchResult?.messageId ? `m-wa-${dispatchResult.messageId}` : msgId,
         conversationId: id,
         author: 'staff',
         channel: targetChannel,
