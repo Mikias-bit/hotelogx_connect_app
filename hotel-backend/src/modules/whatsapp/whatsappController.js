@@ -211,13 +211,13 @@ export const handleAction = async (req, res, next) => {
 };
 
 export const verifyWebhook = (req, res) => {
- const expected = process.env.META_WEBHOOK_VERIFY_TOKEN || process.env.VERIFY_TOKEN;
+ const expected = (process.env.META_WEBHOOK_VERIFY_TOKEN || process.env.VERIFY_TOKEN || '').trim();
  if (!expected) return res.sendStatus(503);
  if (req.query['hub.mode'] !== 'subscribe' || req.query['hub.verify_token'] !== expected || typeof req.query['hub.challenge'] !== 'string') return res.sendStatus(403);
  return res.status(200).type('text/plain').send(req.query['hub.challenge']);
 };
 export const handleWebhook = async (req, res) => {
- const secret = process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET;
+ const secret = (process.env.META_APP_SECRET || process.env.WHATSAPP_APP_SECRET || '').trim();
  if (!secret) return res.sendStatus(503);
  if (!verifyMetaSignature(req.rawBody, req.headers['x-hub-signature-256'], secret)) return res.sendStatus(401);
  try { await webhook.accept(req.body); return res.sendStatus(200); }

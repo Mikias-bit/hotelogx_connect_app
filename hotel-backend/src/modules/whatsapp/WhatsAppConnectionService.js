@@ -6,7 +6,7 @@ export class WhatsAppConnectionService {
   async verify({ wabaId, phoneNumberId, accessToken, pin, register = false }) {
     if (!validMetaId(wabaId) || !validMetaId(phoneNumberId) || !accessToken) throw new Error('A real WABA ID, Phone Number ID, and access token are required');
     const appId = this.env.META_APP_ID || this.env.WHATSAPP_APP_ID;
-    const secret = this.env.META_APP_SECRET || this.env.WHATSAPP_APP_SECRET;
+    const secret = (this.env.META_APP_SECRET || this.env.WHATSAPP_APP_SECRET || '').trim();
     if (!appId || !secret || !(this.env.META_WEBHOOK_VERIFY_TOKEN || this.env.VERIFY_TOKEN)) throw new Error('Configure Meta app credentials and webhook verification token on the server');
     const debug = await this.request('debug_token', `${appId}|${secret}`, { query: { input_token: accessToken } });
     const info = debug.data;
@@ -36,7 +36,7 @@ export class WhatsAppConnectionService {
     if (code) {
       if (!(this.env.META_APP_ID || this.env.WHATSAPP_APP_ID) || !(this.env.META_APP_SECRET || this.env.WHATSAPP_APP_SECRET)) throw new Error('Configure Meta app credentials on the server');
       const token = await this.request('oauth/access_token', null, { query: { client_id: this.env.META_APP_ID || this.env.WHATSAPP_APP_ID,
-        client_secret: this.env.META_APP_SECRET || this.env.WHATSAPP_APP_SECRET, code } });
+        client_secret: (this.env.META_APP_SECRET || this.env.WHATSAPP_APP_SECRET || '').trim(), code } });
       accessToken = token.access_token;
     }
     const { phone, expiresAt } = await this.verify({ wabaId, phoneNumberId, accessToken, pin, register: true });

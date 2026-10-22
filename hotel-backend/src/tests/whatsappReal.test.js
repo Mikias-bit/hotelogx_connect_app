@@ -42,6 +42,13 @@ test('another hotel cannot claim an assigned number', async () => {
   await assert.rejects(service.connect({ hotelId: 'hotel-b', phoneNumberId: '123', wabaId: '456', accessToken: 'token' }), /assigned/);
   assert.equal(calls.length, 0);
 });
+test('Secret Manager file newline is excluded from Meta app credentials', async () => {
+  const { service, calls } = connectionFixture();
+  service.env = { ...env, META_APP_SECRET: 'secret\r\n' };
+  await service.connect({ hotelId: 'hotel-a', code: 'code', phoneNumberId: '123', wabaId: '456' });
+  assert.equal(calls[0].options.query.client_secret, 'secret');
+  assert.equal(calls[1].token, '789|secret');
+});
 test('webhook requires signature over exact raw bytes and configured secret', () => {
   const raw = '{ "object": "whatsapp_business_account" }';
   const signature = 'sha256=' + createHmac('sha256', 'secret').update(raw).digest('hex');
