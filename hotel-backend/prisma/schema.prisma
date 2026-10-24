@@ -410,6 +410,10 @@ model WhatsAppIntegration {
   tokenExpiresAt     DateTime?
   lastInboundAt      DateTime?
   lastOutboundAt     DateTime?
+  onboardingMode     String @default("standard")
+  historySyncStatus  String?
+  contactSyncStatus  String?
+  syncError          String? @db.Text
   lastDeliveryStatus String?
 
   @@unique([hotelId, targetType])

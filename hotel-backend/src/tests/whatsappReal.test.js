@@ -17,6 +17,7 @@ function connectionFixture(failPath) {
     if (path === failPath) throw new Error('Meta rejected request');
     if (path === 'oauth/access_token') return { access_token: 'real-test-token' };
     if (path === 'debug_token') return { data: { is_valid: true, app_id: '789', scopes: ['whatsapp_business_management', 'whatsapp_business_messaging'] } };
+    if (path === '123') return { is_on_biz_app: false, platform_type: 'CLOUD_API' };
     if (path === '456/phone_numbers') return { data: [{ id: '123', status: 'CONNECTED', display_phone_number: '+31612345678' }] };
     if (path === '456/subscribed_apps') return { success: true };
     throw new Error('Unexpected request');
@@ -29,7 +30,7 @@ test('real code exchange verifies ownership, subscribes, and stores encrypted to
   assert.equal(writes.length, 1);
   assert.equal(decryptToken(writes[0].create.accessToken), 'real-test-token');
   assert.equal(writes[0].create.displayPhoneNumber, '+31612345678');
-  assert.deepEqual(calls.map(c => c.path), ['oauth/access_token', 'debug_token', '456/phone_numbers', '456/subscribed_apps']);
+  assert.deepEqual(calls.map(c => c.path), ['oauth/access_token', 'debug_token', '456/phone_numbers', '123', '456/subscribed_apps']);
 });
 for (const path of ['debug_token', '456/phone_numbers', '456/subscribed_apps']) test(`failure at ${path} never saves connected status`, async () => {
   const { service, writes } = connectionFixture(path);
@@ -126,4 +127,58 @@ test('internal messages persist in the hotel operations thread without AI or roo
   await f.service.accept(f.payload); await f.service.accept(f.payload);
   assert.equal(messages.length, 2); assert.equal(threads[0].create.hotelId, 'hotel-a');
   assert.equal(messages[0].create.hotelId, 'hotel-a'); assert.equal(f.counts().automations, 0);
+});
+
+for (const missingId of [false, true]) test(`Coexistence verifies Meta state, skips registration and requests sync (resolve ID: ${missingId})`, async () => {
+  const f = connectionFixture(); const original = f.service.request; const syncs = [];
+  f.db.whatsAppIntegration.updateMany = async args => { syncs.push(args); return { count: 1 }; };
+  f.service.request = async (path, token, options) => {
+    if (path === '123') return { is_on_biz_app: true, platform_type: 'CLOUD_API' };
+    if (path === '456/phone_numbers') return { data: [{ id: '123', display_phone_number: '+31612345678', is_on_biz_app: true, platform_type: 'CLOUD_API', status: 'PENDING' }] };
+    if (path === '789/subscriptions') return { data: [{ object: 'whatsapp_business_account', active: true, fields: ['messages', 'smb_message_echoes', 'history', 'smb_app_state_sync'].map(name => ({ name })) }] };
+    if (path === '123/smb_app_data') { syncs.push(options.body); return { request_id: 'sync-id' }; }
+    assert.ok(!path.endsWith('/register'));
+    return original(path, token, options);
+  };
+  await f.service.connect({ hotelId: 'hotel-a', code: 'code', wabaId: '456', ...(missingId ? {} : { phoneNumberId: '123' }), onboardingMode: 'coexistence' });
+  assert.equal(f.writes[0].create.onboardingMode, 'coexistence');
+  assert.deepEqual(syncs.filter(x => x.sync_type).map(x => x.sync_type), ['smb_app_state_sync', 'history']);
+});
+test('requested Coexistence is rejected when Meta does not confirm Business app sharing', async () => {
+  const f = connectionFixture();
+  await assert.rejects(f.service.connect({ hotelId: 'hotel-a', code: 'code', phoneNumberId: '123', wabaId: '456', onboardingMode: 'coexistence' }), /has not enabled/);
+  assert.equal(f.writes.length, 0);
+});
+test('ambiguous Coexistence phone selection never subscribes or saves a number', async () => {
+  const f = connectionFixture(); const original = f.service.request;
+  f.service.request = (path, token, options) => path === '456/phone_numbers' ? { data: ['123', '124'].map(id => ({ id, is_on_biz_app: true, platform_type: 'CLOUD_API' })) } : original(path, token, options);
+  await assert.rejects(f.service.connect({ hotelId: 'hotel-a', code: 'code', wabaId: '456', onboardingMode: 'coexistence' }), /unique/);
+  assert.equal(f.writes.length, 0);
+});
+
+test('a pending AI retry is cancelled after a phone human takeover', async () => {
+  const f = webhookFixture({ success: false, uncertain: false, error: 'Rejected' });
+  await assert.rejects(f.service.accept(f.payload), /retry/);
+  const before = f.counts();
+  f.db.conversation.upsert = async () => ({ aiStatus: 'human-takeover' });
+  await f.service.accept(f.payload);
+  assert.equal(f.counts().sends, before.sends);
+  assert.equal(f.receipts.get('123:in-1').replyText, null);
+});
+test('one-time sync claims prevent retrying a possibly accepted request', async () => {
+  const f = connectionFixture(); const states = {}; let requests = 0;
+  f.db.whatsAppIntegration.updateMany = async ({ where, data }) => {
+    const field = Object.keys(where).find(key => key !== 'id');
+    if ((states[field] ?? null) !== where[field]) return { count: 0 };
+    Object.assign(states, data); return { count: 1 };
+  };
+  f.service.request = async () => { requests++; throw Object.assign(new Error('timeout'), { uncertain: true }); };
+  await f.service.startSync(row); await f.service.startSync(row);
+  assert.equal(requests, 2); assert.equal(states.historySyncStatus, 'needs-review'); assert.equal(states.contactSyncStatus, 'needs-review');
+});
+test('Coexistence cannot connect without echo and history webhook subscriptions', async () => {
+  const f = connectionFixture(); const original = f.service.request;
+  f.service.request = (path, token, options) => path === '123' ? { is_on_biz_app: true, platform_type: 'CLOUD_API' } : path === '789/subscriptions' ? { data: [] } : original(path, token, options);
+  await assert.rejects(f.service.connect({ hotelId: 'hotel-a', code: 'code', phoneNumberId: '123', wabaId: '456', onboardingMode: 'coexistence' }), /webhook subscriptions/);
+  assert.equal(f.writes.length, 0);
 });

@@ -339,6 +339,7 @@ export const api = {
   // WhatsApp Embedded Signup
   exchangeMetaEmbeddedSignup: (data: {
     code?: string;
+    onboardingMode?: 'standard' | 'coexistence';
     wabaId?: string;
     phoneNumberId?: string;
     displayPhoneNumber?: string;

@@ -41,6 +41,13 @@ app.use(
   }),
 );
 
+// Coexistence history arrives in batches larger than the default 100 KB JSON limit.
+// Keep other API routes at their existing limit, and retain exact signature bytes.
+app.use(['/api/whatsapp/webhook', '/api/webhooks/whatsapp'], express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
+
 // Capture raw body for cryptographic webhook signature verification (Meta WhatsApp)
 app.use(
   express.json({

@@ -12,7 +12,7 @@ Backend Cloud Run settings:
 
 Netlify build settings (public identifiers only): `VITE_META_APP_ID`, `VITE_META_CONFIG_ID`, and `VITE_META_GRAPH_VERSION=v25.0`.
 
-Configure Facebook Login for Business / WhatsApp Embedded Signup for the deployed frontend domain. The configuration must grant `whatsapp_business_management` and `whatsapp_business_messaging`. The app must be authorized for the business being connected. This implementation supports standard Cloud API onboarding; coexistence/migration-specific flows need their own onboarding configuration and are not simulated.
+Configure Facebook Login for Business / WhatsApp Embedded Signup for the deployed frontend domain. The configuration must grant `whatsapp_business_management` and `whatsapp_business_messaging`. The app must be authorized for the business being connected. The connection form supports standard Cloud API and WhatsApp Business app Coexistence. Coexistence still requires Meta account eligibility and a compatible Embedded Signup configuration; it does not migrate existing API numbers between businesses.
 
 Webhook callback: `https://hotelogx-connect-backend-tkissahsva-ez.a.run.app/api/whatsapp/webhook`.
 Set the same verification token in Meta and subscribe to the `messages` field on `whatsapp_business_account`. The backend subscribes the authorized WABA to the app during connection. Registration uses a six-digit PIN when the number is not already registered. Enter it in the connection form, never in source control or chat.
@@ -66,3 +66,29 @@ gcloud.cmd logging read 'resource.type=cloud_run_revision AND resource.labels.se
 Automated tests mock Meta; passing tests do not establish live receipt or Meta app approval.
 
 References: [Meta Embedded Signup](https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/implementation), [Meta Cloud API collection](https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api), [Meta webhook signature verification](https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verification-requests).
+
+## WhatsApp Business app Coexistence
+
+In Settings > Connections > WhatsApp Business > Connect WhatsApp, choose **Keep my WhatsApp Business app (Coexistence)**, then **Continue with Facebook**. A number must already use the Business mobile app and pass Meta eligibility checks. An existing API-only number should use existing API credentials instead. Do not delete the mobile account or register it again as a workaround.
+
+Before enabling customers, subscribe the Meta app's WhatsApp Business Account webhook to `messages`, `smb_message_echoes`, `history`, and `smb_app_state_sync`, preserving existing fields and the current verified callback. Meta app review/advanced permissions and the current Embedded Signup configuration must allow customer onboarding. The backend checks the webhook fields before accepting a Coexistence connection.
+
+The frontend requests `whatsapp_business_app_onboarding` and accepts `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`. This event may contain only a WABA ID. The backend resolves a number only when exactly one eligible Coexistence phone exists in that authorized WABA; ambiguous accounts must supply the intended Phone Number ID through the manual form. The backend verifies `is_on_biz_app=true` and `platform_type=CLOUD_API`, skips `/register`, stores authorization, and requests contacts and history through `/smb_app_data` immediately. Standard connections are also checked for existing Business app sharing, so manual connections cannot accidentally re-register a Coexistence phone.
+
+History/contact requests are claimed durably before the external call. A timeout or rejection is shown as `needs-review`; it is not blindly retried because these requests are one-time operations. A crash while requesting leaves `requesting` for operator review. Resolve failures promptly in Meta's onboarding sync window; reconnecting is not assumed to reset an already requested sync. `received` means a webhook batch arrived, not proof of complete historical coverage. A history-sharing refusal is shown as `not-shared`. Media is represented by a placeholder, not downloaded.
+
+Phone replies are imported as outbound staff messages. They put the conversation into human takeover and cancel pending AI retries. New Coexistence conversations start in human takeover; staff can explicitly resume AI. Echoes are handled first within a webhook entry. A phone reply whose webhook arrives after an API reply was sent cannot recall that reply; simultaneous independent sending cannot be guaranteed duplicate-free. Duplicate echoes do not undo a later deliberate AI resume. Historical imports never trigger AI, add unread counts, grant staff access, or move the conversation timestamp backwards. Contact deletion removes the synced display name, not conversation records.
+
+Live checks: connect an eligible Business app account; verify the number and Coexistence label; approve or decline history sharing and check the displayed status; send a guest message; reply in the phone app and confirm one outbound dashboard entry and human takeover; reply from the dashboard and verify phone delivery; explicitly resume AI and test a new guest message. Existing automated tests use mocked Meta responses, so successful live signup and delivery remain required.
+
+References: [Meta Business app onboarding](https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users), [Coexistence webhook payloads](https://docs.360dialog.com/partner/onboarding/whatsapp-coexistence/coexistence-webhooks).
+
+To configure the webhook fields using the existing Secret Manager entries (requires permission to read them), run from `hotel-backend`:
+
+```powershell
+node scripts/configure-whatsapp-coexistence.mjs --app-id=1018045903953347
+# Review the callback and fields, then apply:
+node scripts/configure-whatsapp-coexistence.mjs --app-id=1018045903953347 --apply
+```
+
+The script preserves the callback and existing subscribed fields, keeps credentials in memory, and verifies Meta's resulting subscription. Deploy the backend before enabling the new fields. WhatsApp webhook bodies accept up to 10 MB; other API request limits are unchanged.

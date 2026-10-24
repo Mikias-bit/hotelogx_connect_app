@@ -23,7 +23,7 @@ export const getThreads = async (req, res, next) => {
     const threads = await prisma.waThread.findMany({
       where: { hotelId },
       include: {
-        messages: true,
+        messages: { orderBy: { at: 'asc' } },
       },
     }).catch((err) => {
       console.warn('[WhatsApp Threads Warning]', err.message);
@@ -234,9 +234,9 @@ export const sendTestMessage = async (req, res, next) => {
 };
 const connect = async (req, res, next, embedded) => {
  try {
-  const { code, accessToken, wabaId, phoneNumberId, targetType = 'guest', pin } = req.body;
+  const { code, accessToken, wabaId, phoneNumberId, targetType = 'guest', pin, onboardingMode = 'standard' } = req.body;
   if (embedded && !code) return errorResponse(res, 'Meta authorization code required', 400);
-  const row = await whatsappConnections.connect({ hotelId: req.user.hotelId, targetType, wabaId, phoneNumberId, pin, ...(embedded ? { code } : { accessToken }) });
+  const row = await whatsappConnections.connect({ hotelId: req.user.hotelId, targetType, wabaId, phoneNumberId, pin, onboardingMode, ...(embedded ? { code } : { accessToken }) });
   return successResponse(res, { integration: { hotelId: row.hotelId, targetType: row.targetType, phoneNumberId: row.phoneNumberId, wabaId: row.wabaId, displayPhoneNumber: row.displayPhoneNumber, status: row.status, verifiedAt: row.verifiedAt } }, 'WhatsApp authorization verified');
  } catch (error) { return errorResponse(res, error.code === 'P2002' ? 'Phone number already assigned' : error.message, 400); }
 };

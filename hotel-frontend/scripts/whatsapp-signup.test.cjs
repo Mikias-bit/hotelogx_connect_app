@@ -7,14 +7,14 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../src/lib/
   .replace(/import\.meta\.env\.VITE_META_APP_ID/g, "'app'").replace(/import\.meta\.env\.VITE_META_CONFIG_ID/g, "'config'");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
 function fixture() {
-  let listener, callback, timeout;
+  let listener, callback, timeout, options;
   const sandbox = { exports: {}, clearTimeout() {}, window: {
     addEventListener: (type, fn) => { listener = fn; }, removeEventListener: () => { listener = null; },
-    setTimeout: fn => { timeout = fn; return 1; }, FB: { login: fn => { callback = fn; } },
+    setTimeout: fn => { timeout = fn; return 1; }, FB: { login: (fn, opts) => { callback = fn; options = opts; } },
   } };
   vm.runInNewContext(compiled, sandbox);
-  return { start: () => sandbox.exports.launchMetaSignup(), login: () => callback({ authResponse: { code: 'code' } }),
-    event: (origin = 'https://www.facebook.com', event = 'FINISH') => listener({ origin, data: JSON.stringify({ type: 'WA_EMBEDDED_SIGNUP', event, data: { waba_id: '123', phone_number_id: '456' } }) }),
+  return { start: mode => sandbox.exports.launchMetaSignup(mode), options: () => options, login: () => callback({ authResponse: { code: 'code' } }),
+    event: (origin = 'https://www.facebook.com', event = 'FINISH', phone_number_id = '456') => listener({ origin, data: JSON.stringify({ type: 'WA_EMBEDDED_SIGNUP', event, data: { waba_id: '123', phone_number_id } }) }),
     listening: () => Boolean(listener), timeout: () => timeout() };
 }
 for (const codeFirst of [true, false]) test(`signup waits for both code and FINISH (code first: ${codeFirst})`, async () => {
@@ -32,4 +32,12 @@ test('untrusted origins cannot provide identifiers; timeout cleans up', async ()
 test('cancel rejects and removes the listener', async () => {
   const f = fixture(); const promise = f.start(); f.event('https://web.facebook.com', 'CANCEL');
   await assert.rejects(promise, /cancelled/); assert.equal(f.listening(), false);
+});
+
+test('Coexistence accepts WABA-only completion and passes the Business app feature', async () => {
+  const f = fixture(); const promise = f.start('coexistence');
+  f.event('https://www.facebook.com', 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING', ''); f.login();
+  const result = await promise;
+  assert.equal(result.onboardingMode, 'coexistence'); assert.equal(result.phoneNumberId, '');
+  assert.equal(f.options().extras.featureType, 'whatsapp_business_app_onboarding');
 });

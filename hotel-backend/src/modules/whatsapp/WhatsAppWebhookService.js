@@ -1,3 +1,4 @@
+import { acceptCoexistence } from './WhatsAppCoexistenceService.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { verifiedConnection } from './MetaClient.js';
 export function verifyMetaSignature(rawBody, signature, secret) {
@@ -9,14 +10,18 @@ export class WhatsAppWebhookService {
   constructor({ db, withLock, automate, send, broadcast }) { Object.assign(this, { db, withLock, automate, send, broadcast }); }
   async accept(body) {
     if (body?.object !== 'whatsapp_business_account' || !Array.isArray(body.entry)) throw Object.assign(new Error('Invalid Meta payload'), { status: 400 });
-    for (const entry of body.entry) for (const change of entry.changes || []) {
-      if (change.field !== 'messages') continue;
+    for (const entry of body.entry) for (const change of [...(entry.changes || [])].sort((a, b) => Number(b.field === 'smb_message_echoes') - Number(a.field === 'smb_message_echoes'))) {
+      if (!['messages', 'smb_message_echoes', 'history', 'smb_app_state_sync'].includes(change.field)) continue;
       const value = change.value || {};
       const phoneNumberId = value.metadata?.phone_number_id;
       if (!phoneNumberId) continue;
       const integration = await this.db.whatsAppIntegration.findFirst({ where: { phoneNumberId, wabaId: entry.id, status: 'connected' } });
       if (!verifiedConnection(integration)) continue;
       await this.withLock(`whatsapp:${integration.hotelId}`, async assertOwned => {
+        if (change.field !== 'messages') {
+          if (integration.onboardingMode === 'coexistence') await acceptCoexistence(this, integration, change.field, value, assertOwned);
+          return;
+        }
         for (const status of value.statuses || []) { await assertOwned(); await this.delivery(integration, status); }
         for (const message of value.messages || []) {
           await assertOwned();
@@ -63,7 +68,7 @@ export class WhatsAppWebhookService {
     const convId = `conv-wa-${hotelId}-${message.from}`;
     // Never infer reservations, occupied rooms, or operational actions from an unverified sender.
     await this.db.guest.upsert({ where: { id: guestId }, create: { id: guestId, hotelId, name, country: '', language: 'en', vip: false, previousStays: 0, tags: JSON.stringify(['WhatsApp Contact', `+${message.from}`]) }, update: {} });
-    let conversation = await this.db.conversation.upsert({ where: { id: convId }, create: { id: convId, guestId, stage: 'Pre-arrival', primaryChannel: 'whatsapp', aiStatus: integration.targetType === 'internal' ? 'human-takeover' : 'ai-handling', sentiment: 'neutral', subject: `WhatsApp: ${name}`, summary: text.slice(0, 200), suggestedReply: '', unread: 0, lastAt: at, aiHandledCount: 0 }, update: {} });
+    let conversation = await this.db.conversation.upsert({ where: { id: convId }, create: { id: convId, guestId, stage: 'Pre-arrival', primaryChannel: 'whatsapp', aiStatus: integration.targetType === 'internal' || integration.onboardingMode === 'coexistence' ? 'human-takeover' : 'ai-handling', sentiment: 'neutral', subject: `WhatsApp: ${name}`, summary: text.slice(0, 200), suggestedReply: '', unread: 0, lastAt: at, aiHandledCount: 0 }, update: {} });
     const inboundId = `m-wa-${message.id}`;
     const exists = await this.db.message.findUnique({ where: { id: inboundId } });
     if (!exists) {
@@ -92,6 +97,10 @@ export class WhatsAppWebhookService {
       return;
     }
     if (receipt.status === 'ready') {
+      if (conversation.aiStatus !== 'ai-handling') {
+        await this.db.whatsAppReceipt.update({ where: { id }, data: { status: 'done', replyText: null, lastError: 'Reply cancelled after human takeover' } });
+        return;
+      }
       await assertOwned();
       await this.db.whatsAppReceipt.update({ where: { id }, data: { status: 'sending' } });
       const result = await this.send({ hotelId, targetType: integration.targetType === 'internal' ? 'internal' : 'guest', to: message.from, text: receipt.replyText });
