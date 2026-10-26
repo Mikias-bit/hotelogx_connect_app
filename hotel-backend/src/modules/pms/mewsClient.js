@@ -14,12 +14,12 @@ const OFFICIAL_MEWS_SERVERS = [
 ];
 
 export class MewsClient {
-  constructor() {
-    this.clientToken = (process.env.MEWS_CLIENT_TOKEN || '').trim();
+  constructor(options = {}) {
+    this.clientToken = (options.clientToken || process.env.MEWS_CLIENT_TOKEN || '').trim();
     this.systemAccessToken = (process.env.MEWS_ACCESS_TOKEN || '').trim();
     
     // Normalize configured URL if provided
-    const configuredUrl = (process.env.MEWS_BASE_URL || process.env.MEWS_API_URL || '')
+    const configuredUrl = (options.baseUrl || process.env.MEWS_BASE_URL || process.env.MEWS_API_URL || '')
       .replace(/\/api\/connector\/v1\/?$/, '')
       .replace(/\/+$/, '');
     
@@ -275,6 +275,8 @@ export class MewsClient {
       enterpriseId,
       enterpriseName,
       accessTokenUsed: cleanToken,
+      clientTokenUsed: (options.clientToken || this.clientToken || 'E0D439EE522F44368DC78E1BFB03710C-D24FB11DBE31D4621C4817E028D9E1D').trim(),
+      verifiedBaseUrl,
       raw,
     };
   }

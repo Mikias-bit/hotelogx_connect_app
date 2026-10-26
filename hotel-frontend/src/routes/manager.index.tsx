@@ -1,3 +1,4 @@
+import { DailyReportSummary } from '@/components/DailyReports';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -159,6 +160,7 @@ function ManagerDashboard() {
 
   return (
     <AppShell title="Morning operational briefing">
+      <DailyReportSummary />
       <div className="space-y-6">
         <div>
           <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>

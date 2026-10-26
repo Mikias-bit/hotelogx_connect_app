@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PmsUpsells } from '@/components/PmsUpsells';
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Percent, Send, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -46,6 +47,7 @@ function ManagerUpsells() {
   return (
     <AppShell title="What the AI sold without being asked">
       <div className="space-y-5">
+        <PmsUpsells />
         <div>
           <Eyebrow>Upsells</Eyebrow>
           <h1 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">Offers the AI made in conversation</h1>

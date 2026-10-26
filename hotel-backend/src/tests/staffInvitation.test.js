@@ -5,6 +5,36 @@ import { createInvitationService } from '../modules/users/invitationService.js';
 import { createInvitationMailer } from '../utils/mailer.js';
 
 const actor = { id: 'manager-1', hotelId: 'hotel-1', role: 'manager' };
+for (const provider of ['hostinger', 'credentials']) {
+  for (const [role, title] of [['front-office', 'Front Desk Agent'], ['housekeeping', 'Housekeeping Staff']]) {
+    test(`${role} invitation routes through connected ${provider} SMTP`, async () => {
+      const messages = [];
+      const send = createInvitationMailer({
+        db: { emailIntegration: { findUnique: async ({ where }) => {
+          assert.equal(where.hotelId, actor.hotelId);
+          return { provider, status: 'connected' };
+        } } },
+        smtp: { sendSmtpGuestMail: async message => {
+          messages.push(message);
+          return { success: true, messageId: 'smtp-test-id' };
+        } },
+        google: { sendGuestGmail: async () => assert.fail('Unexpected Gmail send') },
+        microsoft: { sendGuestMicrosoftMail: async () => assert.fail('Unexpected Microsoft send') },
+        settings: { frontendUrl: 'https://hotelogxconnect.netlify.app', nodeEnv: 'production' },
+      });
+      const { invite, calls } = fixture(null, send);
+      const user = await invite(actor, { email: `${role}@example.com`, role });
+      assert.equal(user.role, role);
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0].hotelId, actor.hotelId);
+      assert.equal(messages[0].to, `${role}@example.com`);
+      assert.ok(messages[0].bodyText.includes(title));
+      assert.ok(messages[0].bodyText.includes('https://hotelogxconnect.netlify.app/login'));
+      assert.ok(messages[0].bodyText.includes(calls.sends[0].temporaryPassword));
+      assert.ok(await bcrypt.compare(calls.sends[0].temporaryPassword, calls.creates[0].passwordHash));
+    });
+  }
+}
 function fixture(existing = null, sender = async () => ({ success: true, messageId: 'provider-1' }), connected = true) {
   const calls = { sends: [], creates: [], deletes: [], activities: [] };
   const db = {

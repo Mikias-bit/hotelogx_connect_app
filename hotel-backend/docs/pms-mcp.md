@@ -1,0 +1,89 @@
+# Mews MCP integration
+
+Private service: https://hotelogx-pms-mcp-tkissahsva-ez.a.run.app/mcp
+Project: hotelogx. Region: europe-west4.
+
+Backend module: src/modules/pms/pmsMcpClient.js. Its callTool and listTools methods
+require the authenticated backend user object; never construct hotel/user context
+from tool arguments or a caller-supplied request-body hotel ID.
+
+The backend obtains a Google ID token from its Cloud Run runtime identity and
+sends it in X-Serverless-Authorization. A distinct short-lived HS256 context token
+in Authorization binds the hotel, user, role, audience and issuer. The MCP service
+rechecks staff membership in Neon before calling Mews. Only the backend service
+account has the service-level Cloud Run invoker grant; no anonymous grant exists.
+
+Environment: PMS_MCP_URL is the service base URL. PMS_MCP_CONTEXT_KEY is mounted
+from the dedicated Secret Manager secret. Neither value should be supplied by AI.
+The Python service reads DATABASE_URL from Secret Manager and exact-hotel
+PmsIntegration records from Neon. Its PMS_ENCRYPTION_KEY matches the backend
+DB_ENCRYPTION_KEY, or JWT_SECRET fallback, for token decoding.
+
+Onboarding now persists clientTokenEncrypted and baseUrl along with the existing
+access token and verified enterprise ID. The client token is encrypted using the
+existing Connect tokenCrypto format. Existing access-token storage is unchanged.
+Connections created before this change must reconnect to save missing fields.
+The migration is additive and does not overwrite any hotel credentials.
+
+Authenticated managers/front office can GET /api/pms/mcp/status to perform a live
+connection check. This returns a clear reconnect error if credentials are incomplete.
+No guest records or payment changes are involved in that diagnostic.
+
+Cloud deployment verification on 2026-10-26: hosted MCP initialization and all ten
+tools listed successfully; anonymous requests rejected; Neon access and unknown-hotel
+rejection verified. Both existing connected records lacked clientTokenEncrypted and
+baseUrl. A real Mews business-data lookup remains pending reconnection.
+
+Tests: node --test src/tests/pmsMcp.test.js src/tests/pmsCredentials.test.js.
+Python project README documents its 13 pipeline/runtime tests and deployment script.
+
+## Upsell tools and OpenAI
+
+`pmsAiTools.js` connects the existing OpenAI Chat Completions model to the MCP
+manifest. Only search_upsell_products, get_my_reservation and quote_upsell are
+offered to the model. Exact `ACCEPT <offer code>` messages invoke
+post_accepted_upsell directly. The server independently verifies persisted guest
+acceptance of a delivered quote. The model cannot supply a hotel, reservation,
+customer, price or approval override. Other PMS staff tools are forbidden for
+the signed conversation role.
+
+Managers use **Manager → Upsells → Reservation extras and folio approvals**.
+Front office has the same approval/binding panel on its dashboard. Staff must
+verify guest identity and link the conversation to its Mews reservation UUID.
+Do not infer ownership from a room number, name or message text.
+
+PMS prices work directly. To use a knowledge-base price, a manager selects the
+actual Mews product, approves its unit price/currency and identifies an indexed
+hotel knowledge document. Free-text retrieval is informational, not charge
+authorization. Relative prices and incomplete tax metadata require staff review.
+
+Automatic posting defaults off per product and also obeys hotel/conversation/VIP
+policy. Early check-in and late checkout always need staff approval. Staff approval
+does not replace guest acceptance. Offers expire after one hour; price/policy or
+reservation-binding changes require a new offer. Approval and rejection endpoints
+are restricted to the current hotel's manager/front-office staff.
+
+The write calls Mews orders/add with explicit one-time quantity, approved unit
+amount/tax codes and LinkedReservationId. It does not multiply quantity by nights
+or persons. It creates a product order linked to the reservation; it does not
+settle a bill, charge a card, refund, or send a payment link.
+
+Atomic database claims prevent repeated external writes for an offer. A timeout
+or interrupted posting remains `uncertain`/`posting`: inspect the Mews folio and
+the `hotelogx-upsell-<offer code>` external reference before any manual action.
+There is deliberately no automatic retry or reset of uncertain offers.
+
+Migration: `20261026020000_pms_upsell_tools` (three additive tables).
+Tests: pmsAiTools.test.js, pmsUpsellRoutes.test.js, pmsMcp.test.js;
+Python tests/mews/test_upsells.py. Run `node scripts/check-upsell-database.mjs`
+for disposable Neon schema checks. It expects the sibling MCP repository/venv;
+PMS_MCP_ROOT and PMS_MCP_PYTHON can override these paths. No real Mews write is
+performed by any test. Live end-to-end posting still requires a connected hotel,
+verified reservation and explicitly accepted test offer.
+
+Deployment on 2026-10-26: MCP revision hotelogx-pms-mcp-00003-pxv and backend
+revision hotelogx-connect-backend-00050-z5r serve the upsell integration. The hosted
+manifest lists 14 tools; anonymous access and unknown hotels are rejected. The
+upsell migration is applied. Frontend type checking and production build passed;
+publishing the new screens remains pending because Netlify CLI is not logged in
+or linked to a site on this machine. No live Mews folio write has been performed.

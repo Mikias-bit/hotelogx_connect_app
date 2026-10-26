@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import { createPmsMcpClient } from './pmsMcpClient.js';
+import { createUpsellRouter } from './pmsUpsellRoutes.js';
+import { successResponse, errorResponse } from '../../utils/response.js';
 import {
   connectPmsController,
   disconnectPmsController,
@@ -14,6 +17,17 @@ import {
 import { authenticate } from '../../middlewares/auth.js';
 
 const router = Router();
+router.use('/upsells', createUpsellRouter());
+
+// Authenticated staff diagnostic. No caller-supplied hotel IDs or tool names.
+router.get('/mcp/status', authenticate, async (req, res) => {
+  if (!['manager', 'front-office'].includes(req.user.role)) return errorResponse(res, 'Manager or front-office access required', 403);
+  try {
+    const result = await createPmsMcpClient().callTool(req.user, 'check_connection');
+    if (result.isError) return errorResponse(res, result.content?.find(item => item.type === 'text')?.text || 'Mews connection check failed', 409);
+    return successResponse(res, result.structuredContent || result.content);
+  } catch { return errorResponse(res, 'PMS MCP connection is unavailable', 503); }
+});
 
 // Authenticated PMS management endpoints
 router.post('/connect', authenticate, connectPmsController);

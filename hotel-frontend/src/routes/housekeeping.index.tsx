@@ -1,3 +1,4 @@
+import { DailyReportSummary } from '@/components/DailyReports';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlarmClock, ArrowRight, BedDouble, CheckCircle2, Crown, DoorClosed, LogIn, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -38,6 +39,7 @@ function HousekeepingDashboard() {
 
   return (
     <AppShell title="Housekeeping — the floor at a glance">
+      <DailyReportSummary />
       <div className="space-y-6">
         <div>
           <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>

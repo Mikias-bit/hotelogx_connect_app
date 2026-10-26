@@ -48,6 +48,9 @@ app.use(['/api/whatsapp/webhook', '/api/webhooks/whatsapp'], express.json({
   verify: (req, res, buf) => { req.rawBody = buf; },
 }));
 
+// Structured daily reports can contain thousands of rows.
+app.use('/api/reports/ingest', express.json({ limit: '5mb' }));
+
 // Capture raw body for cryptographic webhook signature verification (Meta WhatsApp)
 app.use(
   express.json({

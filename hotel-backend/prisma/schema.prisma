@@ -38,6 +38,9 @@ model Hotel {
   pmsIntegration  PmsIntegration? @relation("HotelPmsIntegration")
   subscription    Subscription?
   invoices        Invoice[]
+  dailyReportSource DailyReportSource?
+  dailyReports DailyReport[]
+  dailyReportReviews DailyReportReview[]
 }
 
 model User {
@@ -345,6 +348,8 @@ model PmsIntegration {
   provider             String    @default("mews")
   propertyId           String
   accessTokenEncrypted String?   @db.Text
+  clientTokenEncrypted String?   @db.Text
+  baseUrl              String?
   status               String    @default("connected")
   lastSyncAt           DateTime?
   lastError            String?   @db.Text
@@ -607,4 +612,110 @@ model WhatsAppReceipt {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([hotelId, status])
+}
+
+// Engine credentials are scoped to one hotel; only hashes are stored here.
+model DailyReportSource {
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotelId String @id
+  engineHotelId String @unique
+  tokenHash String @unique
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DailyReport {
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid())
+  hotelId String
+  kind String
+  reportDate String
+  runId String
+  generatedAt DateTime
+  receivedAt DateTime @default(now())
+  status String
+  checksum String
+  rows Json
+  @@unique([hotelId, kind, reportDate, runId])
+  @@index([hotelId, kind, reportDate, generatedAt])
+}
+
+model DailyReportReview {
+  hotel Hotel @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid())
+  hotelId String
+  kind String
+  reportDate String
+  itemKey String
+  contentHash String
+  status String
+  note String @default("") @db.Text
+  updatedBy String
+  updatedAt DateTime @updatedAt
+  @@unique([hotelId, kind, reportDate, itemKey])
+}
+
+
+model PmsConversationBinding {
+  conversationId String @id
+  hotelId String
+  reservationId String
+  customerId String
+  verifiedBy String
+  verifiedAt DateTime @default(now())
+  @@index([hotelId])
+}
+
+model PmsUpsellProduct {
+  id String @id @default(uuid())
+  hotelId String
+  productId String
+  serviceId String
+  label String
+  category String @default("other")
+  priceSource String @default("pms")
+  unitAmount Decimal? @db.Decimal(12, 2)
+  currency String?
+  knowledgeDocId String?
+  autoPost Boolean @default(false)
+  active Boolean @default(true)
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([hotelId, productId])
+}
+
+model PmsUpsellOffer {
+  id String @id
+  hotelId String
+  conversationId String
+  bindingVerifiedAt DateTime
+  reservationId String
+  customerId String
+  productId String
+  serviceId String
+  name String
+  category String
+  priceSource String
+  priceHash String
+  quantity Int
+  unitAmount Decimal @db.Decimal(12, 2)
+  totalAmount Decimal @db.Decimal(12, 2)
+  currency String
+  taxCodes Json
+  consumptionUtc DateTime
+  status String @default("offered")
+  requestKey String @unique
+  acceptedMessageId String?
+  approvedBy String?
+  approvedAt DateTime?
+  approvalNote String?
+  result Json?
+  lastError String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  updatedAt DateTime @default(now()) @updatedAt
+  @@index([hotelId, status])
+  @@index([conversationId, createdAt])
 }

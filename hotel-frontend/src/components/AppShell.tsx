@@ -30,6 +30,7 @@ type NavItem = { to: string; label: string; icon: React.ComponentType<{ classNam
 const navByRole: Record<Role, NavItem[]> = {
   manager: [
     { to: "/manager", label: "Dashboard", icon: Gauge },
+    { to: "/manager/reports", label: "Daily reports", icon: ClipboardList },
     { to: "/manager/conversations", label: "Conversations", icon: MessageSquare },
     { to: "/manager/tasks", label: "Tasks", icon: ClipboardList },
     { to: "/manager/upsells", label: "Upsells", icon: TrendingUp },
@@ -37,11 +38,13 @@ const navByRole: Record<Role, NavItem[]> = {
   ],
   "front-office": [
     { to: "/front-office", label: "Dashboard", icon: Gauge },
+    { to: "/front-office/reports", label: "Daily reports", icon: ClipboardList },
     { to: "/front-office/conversations", label: "Conversations", icon: MessageSquare },
     { to: "/front-office/tasks", label: "Tasks", icon: ClipboardList },
   ],
   housekeeping: [
     { to: "/housekeeping", label: "Dashboard", icon: Gauge },
+    { to: "/housekeeping/reports", label: "Daily reports", icon: ClipboardList },
     { to: "/housekeeping/rooms", label: "Rooms", icon: BedDouble },
     { to: "/housekeeping/tasks", label: "Tasks", icon: ClipboardList },
   ],

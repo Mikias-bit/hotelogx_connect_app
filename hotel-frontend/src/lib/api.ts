@@ -17,7 +17,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -118,6 +118,12 @@ async function invitationRequest<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  getPmsUpsells: () => request<any>('/pms/upsells'),
+  searchPmsProducts: (q: string) => request<any>(`/pms/upsells/products/search?q=${encodeURIComponent(q)}`),
+  bindPmsConversation: (id: string, reservationId: string) => request<any>(`/pms/upsells/bindings/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ reservationId, identityVerified: true }) }),
+  savePmsProduct: (id: string, data: unknown) => request<any>(`/pms/upsells/products/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  approvePmsOffer: (id: string, note: string) => request<any>(`/pms/upsells/offers/${encodeURIComponent(id)}/approve`, { method: 'POST', body: JSON.stringify({ note }) }),
+  rejectPmsOffer: (id: string) => request<any>(`/pms/upsells/offers/${encodeURIComponent(id)}/reject`, { method: 'POST' }),
   // Rooms
   getRooms: () => request<any[]>('/rooms'),
   updateRoomStatus: (number: string, status: string, cleaner?: string, note?: string) =>
@@ -231,6 +237,10 @@ export const api = {
     }),
 
   // Manager & Health
+  getDailyReports: (date?: string) => request<any>(`/reports${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  reviewDailyReport: (data: any) => request<any>('/reports/review', { method: 'PATCH', body: JSON.stringify(data) }),
+  getReportSource: () => request<any>('/reports/source'),
+  createReportSource: (engineHotelId: string) => request<any>('/reports/source', { method: 'POST', body: JSON.stringify({ engineHotelId }) }),
   getBriefing: () => request<any>('/manager/briefing'),
   getActivity: () => request<any[]>('/manager/activity'),
   getAiRules: () => request<any>('/manager/rules'),

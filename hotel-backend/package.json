@@ -22,6 +22,7 @@
     "test:microsoft:database": "node scripts/test-microsoft-database.mjs .env",
     "test:imap": "node --test src/tests/imapIngestion.test.js",
     "test:imap:database": "node scripts/test-imap-database.mjs .env",
+    "test:reports": "node --test src/tests/dailyReports.test.js",
     "test:whatsapp": "node --test src/tests/whatsappReal.test.js src/tests/whatsappCoexistence.test.js src/tests/whatsappWebhookHttp.test.js"
   },
   "dependencies": {

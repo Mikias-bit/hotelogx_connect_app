@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { prisma } from '../../config/database.js';
 import { pmsService } from '../pms/pmsService.js';
 import { emailService } from '../email/emailService.js';
+import { runPmsAiTools } from '../pms/pmsAiTools.js';
 
 /**
  * Common stop words for keyword extraction
@@ -523,8 +524,31 @@ export async function processGuestMessageAI({
   const guest = conversation.guest;
   const guestName = guest?.name || 'Guest';
   const effectiveHotelId = hotelId || guest?.hotelId;
+  if (!effectiveHotelId || (hotelId && guest?.hotelId !== hotelId)) throw new Error('Conversation hotel mismatch');
   const room = extractRoomNumber(messageText, conversation, guest) || '208';
   const timeStr = getClockTime();
+
+  if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY) {
+    const history = await database.message.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 8 });
+    const knowledge = await retrieveRelevantKnowledge(effectiveHotelId, messageText);
+    const result = await runPmsAiTools({ hotelId: effectiveHotelId, conversationId, messageText,
+      history: history.reverse(), knowledge: knowledge.contextText || '' });
+    if (result) {
+      const hotel = await database.hotel.findUnique({ where: { id: effectiveHotelId } });
+      const config = await database.aiConfig.findUnique({ where: { hotelId: effectiveHotelId } });
+      const policy = await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText, guest, database, strict: deferEmailDelivery });
+      const requiresApproval = policy.requiresApproval || hotel?.aiMode !== 'Autonomous' || config?.autoReply === false || conversation.aiStatus !== 'ai-handling';
+      const message = requiresApproval ? null : await database.message.create({ data: {
+        id: `m-${crypto.randomUUID()}`, conversationId, author: 'ai', channel, body: result.replyText,
+        at: timeStr, deliveryStatus: 'pending', knowledge: JSON.stringify(knowledge.docNames || []),
+      } });
+      if (!requiresApproval && !deferEmailDelivery) dispatchOutboundEmail({ channel, conversation, guest,
+        hotelId: effectiveHotelId, conversationId, text: result.replyText });
+      return { handled: true, requiresApproval, aiStatus: requiresApproval ? 'human-takeover' : 'ai-handling',
+        type: 'pms_tool', message, replyText: result.replyText, suggestedReply: result.replyText,
+        knowledgeUsed: knowledge.docNames || [], upsellIdeas: [] };
+    }
+  }
 
   // Detect upsell opportunities
   const detectedUpsells = detectUpsellOpportunities(messageText, conversation, guest);

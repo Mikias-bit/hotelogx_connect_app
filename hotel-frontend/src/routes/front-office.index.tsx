@@ -1,3 +1,5 @@
+import { DailyReportSummary } from '@/components/DailyReports';
+import { PmsUpsells } from '@/components/PmsUpsells';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -72,6 +74,8 @@ function FrontOfficeDashboard() {
 
   return (
     <AppShell title="Front office — your shift, prepared">
+      <DailyReportSummary />
+      <PmsUpsells />
       <div className="space-y-6">
         <div>
           <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>

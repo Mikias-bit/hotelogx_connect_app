@@ -19,12 +19,15 @@ import { Route as FrontOfficeIndexRouteImport } from './routes/front-office.inde
 import { Route as ManagerUpsellsRouteImport } from './routes/manager.upsells'
 import { Route as ManagerTasksRouteImport } from './routes/manager.tasks'
 import { Route as ManagerSettingsRouteImport } from './routes/manager.settings'
+import { Route as ManagerReportsRouteImport } from './routes/manager.reports'
 import { Route as ManagerConversationsRouteImport } from './routes/manager.conversations'
 import { Route as MaintenanceTasksRouteImport } from './routes/maintenance.tasks'
 import { Route as MaintenanceIssuesRouteImport } from './routes/maintenance.issues'
 import { Route as HousekeepingTasksRouteImport } from './routes/housekeeping.tasks'
 import { Route as HousekeepingRoomsRouteImport } from './routes/housekeeping.rooms'
+import { Route as HousekeepingReportsRouteImport } from './routes/housekeeping.reports'
 import { Route as FrontOfficeTasksRouteImport } from './routes/front-office.tasks'
+import { Route as FrontOfficeReportsRouteImport } from './routes/front-office.reports'
 import { Route as FrontOfficeConversationsRouteImport } from './routes/front-office.conversations'
 
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -77,6 +80,11 @@ const ManagerSettingsRoute = ManagerSettingsRouteImport.update({
   path: '/manager/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManagerReportsRoute = ManagerReportsRouteImport.update({
+  id: '/manager/reports',
+  path: '/manager/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ManagerConversationsRoute = ManagerConversationsRouteImport.update({
   id: '/manager/conversations',
   path: '/manager/conversations',
@@ -102,9 +110,19 @@ const HousekeepingRoomsRoute = HousekeepingRoomsRouteImport.update({
   path: '/housekeeping/rooms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HousekeepingReportsRoute = HousekeepingReportsRouteImport.update({
+  id: '/housekeeping/reports',
+  path: '/housekeeping/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FrontOfficeTasksRoute = FrontOfficeTasksRouteImport.update({
   id: '/front-office/tasks',
   path: '/front-office/tasks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FrontOfficeReportsRoute = FrontOfficeReportsRouteImport.update({
+  id: '/front-office/reports',
+  path: '/front-office/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FrontOfficeConversationsRoute =
@@ -119,12 +137,15 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
+  '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/reports': typeof ManagerReportsRoute
   '/manager/settings': typeof ManagerSettingsRoute
   '/manager/tasks': typeof ManagerTasksRoute
   '/manager/upsells': typeof ManagerUpsellsRoute
@@ -138,12 +159,15 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
+  '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/reports': typeof ManagerReportsRoute
   '/manager/settings': typeof ManagerSettingsRoute
   '/manager/tasks': typeof ManagerTasksRoute
   '/manager/upsells': typeof ManagerUpsellsRoute
@@ -158,12 +182,15 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
+  '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/reports': typeof ManagerReportsRoute
   '/manager/settings': typeof ManagerSettingsRoute
   '/manager/tasks': typeof ManagerTasksRoute
   '/manager/upsells': typeof ManagerUpsellsRoute
@@ -179,12 +206,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/reports'
     | '/front-office/tasks'
+    | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/reports'
     | '/manager/settings'
     | '/manager/tasks'
     | '/manager/upsells'
@@ -198,12 +228,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/reports'
     | '/front-office/tasks'
+    | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/reports'
     | '/manager/settings'
     | '/manager/tasks'
     | '/manager/upsells'
@@ -217,12 +250,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/reports'
     | '/front-office/tasks'
+    | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/reports'
     | '/manager/settings'
     | '/manager/tasks'
     | '/manager/upsells'
@@ -237,12 +273,15 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   FrontOfficeConversationsRoute: typeof FrontOfficeConversationsRoute
+  FrontOfficeReportsRoute: typeof FrontOfficeReportsRoute
   FrontOfficeTasksRoute: typeof FrontOfficeTasksRoute
+  HousekeepingReportsRoute: typeof HousekeepingReportsRoute
   HousekeepingRoomsRoute: typeof HousekeepingRoomsRoute
   HousekeepingTasksRoute: typeof HousekeepingTasksRoute
   MaintenanceIssuesRoute: typeof MaintenanceIssuesRoute
   MaintenanceTasksRoute: typeof MaintenanceTasksRoute
   ManagerConversationsRoute: typeof ManagerConversationsRoute
+  ManagerReportsRoute: typeof ManagerReportsRoute
   ManagerSettingsRoute: typeof ManagerSettingsRoute
   ManagerTasksRoute: typeof ManagerTasksRoute
   ManagerUpsellsRoute: typeof ManagerUpsellsRoute
@@ -324,6 +363,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ManagerSettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manager/reports': {
+      id: '/manager/reports'
+      path: '/manager/reports'
+      fullPath: '/manager/reports'
+      preLoaderRoute: typeof ManagerReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/manager/conversations': {
       id: '/manager/conversations'
       path: '/manager/conversations'
@@ -359,11 +405,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HousekeepingRoomsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/housekeeping/reports': {
+      id: '/housekeeping/reports'
+      path: '/housekeeping/reports'
+      fullPath: '/housekeeping/reports'
+      preLoaderRoute: typeof HousekeepingReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/front-office/tasks': {
       id: '/front-office/tasks'
       path: '/front-office/tasks'
       fullPath: '/front-office/tasks'
       preLoaderRoute: typeof FrontOfficeTasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/front-office/reports': {
+      id: '/front-office/reports'
+      path: '/front-office/reports'
+      fullPath: '/front-office/reports'
+      preLoaderRoute: typeof FrontOfficeReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/front-office/conversations': {
@@ -381,12 +441,15 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   FrontOfficeConversationsRoute: FrontOfficeConversationsRoute,
+  FrontOfficeReportsRoute: FrontOfficeReportsRoute,
   FrontOfficeTasksRoute: FrontOfficeTasksRoute,
+  HousekeepingReportsRoute: HousekeepingReportsRoute,
   HousekeepingRoomsRoute: HousekeepingRoomsRoute,
   HousekeepingTasksRoute: HousekeepingTasksRoute,
   MaintenanceIssuesRoute: MaintenanceIssuesRoute,
   MaintenanceTasksRoute: MaintenanceTasksRoute,
   ManagerConversationsRoute: ManagerConversationsRoute,
+  ManagerReportsRoute: ManagerReportsRoute,
   ManagerSettingsRoute: ManagerSettingsRoute,
   ManagerTasksRoute: ManagerTasksRoute,
   ManagerUpsellsRoute: ManagerUpsellsRoute,

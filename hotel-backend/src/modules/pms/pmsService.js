@@ -1,3 +1,4 @@
+import { encryptToken, decryptToken } from '../../utils/tokenCrypto.js';
 import { bulkUpsert } from '../../utils/bulkUpsert.js';
 import { prisma } from '../../config/database.js';
 import { MewsClient } from './mewsClient.js';
@@ -77,38 +78,8 @@ export const pmsService = {
     const enterpriseData = await mewsClient.validateEnterpriseAccess(cleanPropertyId, { clientToken });
 
     // 2. Ensure Hotel record exists in database
-    let hotelExists = await prisma.hotel.findUnique({ where: { id: hotelId } }).catch(() => null);
-    if (!hotelExists) {
-      hotelExists = await prisma.hotel.findFirst().catch(() => null);
-    }
-    if (!hotelExists) {
-      hotelExists = await prisma.hotel.create({
-        data: {
-          id: hotelId || 'hotel-connected',
-          name: enterpriseData.enterpriseName || 'Mews Connected Hotel',
-          legalName: `${enterpriseData.enterpriseName || 'Mews Connected Hotel'} BV`,
-          stars: 4,
-          roomsCount: 48,
-          address: 'Kloosterstraat 44',
-          postcode: '2000',
-          city: 'Antwerp',
-          country: 'Belgium',
-          phone: '+32 3 227 41 09',
-          email: 'reception@hotelmercier.be',
-          website: 'https://hotelmercier.be',
-          bookingEngine: 'https://hotelmercier.be',
-          whatsappNumber: '+32 3 227 41 09',
-          vatNumber: 'BE 0842.123.456',
-          description: 'Live Mews connected property.',
-          waTopology: 'separate',
-          onboardingDone: false,
-          onboardingSteps: '["pms"]',
-          aiMode: 'Autonomous',
-        },
-      }).catch(async () => {
-        return await prisma.hotel.findFirst().catch(() => null);
-      });
-    }
+    const hotelExists = await prisma.hotel.findUnique({ where: { id: hotelId } });
+    if (!hotelExists) throw Object.assign(new Error('Hotel not found'), { statusCode: 404 });
 
     const targetHotelId = hotelExists?.id || hotelId;
     const now = new Date();
@@ -120,6 +91,8 @@ export const pmsService = {
         provider: 'mews',
         propertyId: enterpriseData.propertyId,
         accessTokenEncrypted: enterpriseData.accessTokenUsed,
+        clientTokenEncrypted: encryptToken(enterpriseData.clientTokenUsed),
+        baseUrl: enterpriseData.verifiedBaseUrl,
         status: 'connected',
         lastSyncAt: now,
         lastError: null,
@@ -129,6 +102,8 @@ export const pmsService = {
         provider: 'mews',
         propertyId: enterpriseData.propertyId,
         accessTokenEncrypted: enterpriseData.accessTokenUsed,
+        clientTokenEncrypted: encryptToken(enterpriseData.clientTokenUsed),
+        baseUrl: enterpriseData.verifiedBaseUrl,
         status: 'connected',
         lastSyncAt: now,
       },
@@ -188,6 +163,8 @@ export const pmsService = {
       data: {
         status: 'not-started',
         accessTokenEncrypted: null,
+        clientTokenEncrypted: null,
+        baseUrl: null,
         propertyId: '',
         lastError: null,
       },
@@ -287,7 +264,7 @@ export const pmsService = {
       throw new Error('No active PMS connection found for this hotel. Please connect Mews first.');
     }
 
-    const mewsClient = new MewsClient();
+    const mewsClient = new MewsClient({ clientToken: decryptToken(pms?.clientTokenEncrypted), baseUrl: pms?.baseUrl });
     const token = pms.accessTokenEncrypted;
 
     try {
@@ -607,7 +584,7 @@ export const pmsService = {
       const room = await prisma.room.findFirst({ where: { number: roomNumber, hotelId } });
       if (!room || !room.mewsId) return;
 
-      const mewsClient = new MewsClient();
+      const mewsClient = new MewsClient({ clientToken: decryptToken(pms?.clientTokenEncrypted), baseUrl: pms?.baseUrl });
       await mewsClient.updateSpaceState(pms.accessTokenEncrypted, room.mewsId, status);
     } catch (err) {
       console.warn(`[PmsService] syncRoomStatusToMews non-fatal notice for room ${roomNumber}:`, err.message);
@@ -629,7 +606,7 @@ export const pmsService = {
       where: { hotelId: targetHotelId },
     });
 
-    const mewsClient = new MewsClient();
+    const mewsClient = new MewsClient({ clientToken: decryptToken(pms?.clientTokenEncrypted), baseUrl: pms?.baseUrl });
     const token = pms?.accessTokenEncrypted;
 
     let liveAvailability = [];
@@ -970,7 +947,7 @@ export const pmsService = {
           Blocked: 'OutOfOrder',
         };
         const mewsState = mewsStateMap[status] || 'Dirty';
-        const mewsClient = new MewsClient();
+        const mewsClient = new MewsClient({ clientToken: decryptToken(pms?.clientTokenEncrypted), baseUrl: pms?.baseUrl });
         mewsClient.updateSpaceState(pms.accessTokenEncrypted, updated.mewsId, mewsState).catch(() => { });
       }
     } catch (mewsErr) {
