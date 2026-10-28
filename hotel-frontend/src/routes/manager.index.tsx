@@ -1,4 +1,5 @@
-import { DailyReportSummary } from '@/components/DailyReports';
+import { OperationsBoard } from '@/components/OperationsBoard';
+import { useOperations } from '@/lib/useOperations';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/manager/")({
 
 function ManagerDashboard() {
   const user = useCurrentUser();
+  const operations = useOperations();
   const navigate = useNavigate();
   const escalations = useApp(selectors.escalations);
   const openTasks = useApp(selectors.openTasks);
@@ -74,20 +76,22 @@ function ManagerDashboard() {
   const departuresCount = rooms.filter((r) => r.guestStatus === "Departed" || r.guestStatus === "Departing").length;
   const inHouseCount = rooms.filter((r) => r.guestStatus !== "Vacant").length;
   const occupancyRate = rooms.length ? Math.round((inHouseCount / rooms.length) * 100) : 0;
-  const vipArrivalsCount = rooms.filter((r) => r.vip && r.arrivalTime).length;
+  const vipSource = operations.data?.sources.find(s => s.kind === 'vip');
+  const vipArrivalsCount = vipSource?.status === 'complete' && !vipSource.stale ? operations.data?.vips.length ?? 0 : 0;
   const earlyCheckInsCount = rooms.filter((r) => r.earlyCheckIn).length;
   const totalMessages = conversations.reduce((acc, c) => acc + (c.messages?.length || 0), 0);
 
   const briefLines: BriefLine[] = [
+    ...(operations.data?.briefing || []).map(text => ({ text, tone: 'ai' as const })),
     {
-      text: `${arrivalsCount} arrivals and ${departuresCount} departures. ${vipArrivalsCount} VIP arrivals, ${earlyCheckInsCount} early check-ins already agreed.`,
+      text: `${arrivalsCount} arrivals and ${departuresCount} departures. ${vipArrivalsCount} VIP preparations, ${earlyCheckInsCount} early check-ins already agreed.`,
       tone: "ai",
       meta: `${occupancyRate}% occupancy`,
     },
     {
-      text: `The AI answered ${totalMessages} guest messages across channels, handling ${aiHandled} conversations autonomously.`,
+      text: `${totalMessages} messages recorded across channels, handling ${aiHandled} conversations autonomously.`,
       tone: "good",
-      meta: "< 45s avg",
+
     },
     {
       text: `${escalations.length} conversation${escalations.length === 1 ? "" : "s"} need you personally.${escalations[0]?.escalation?.reason ? ` — ${escalations[0].escalation.reason}` : ""}`,
@@ -124,25 +128,25 @@ function ManagerDashboard() {
     {
       name: "Front Office",
       icon: MessageSquare,
-      lead: "Amélie Duprez",
+      lead: "Front Office team",
       stat: `${tasks.filter((t) => t.department === "Front Office" && t.status !== "Completed").length} open tasks`,
       note: `${guestRequests.length} live guest requests · ${aiHandled} threads on autopilot`,
-      progress: 68,
+      progress: tasks.filter(t => t.department === "Front Office").length ? Math.round(tasks.filter(t => t.department === "Front Office" && t.status === "Completed").length / tasks.filter(t => t.department === "Front Office").length * 100) : 0,
       tone: "pine" as const,
     },
     {
       name: "Housekeeping",
       icon: BedDouble,
-      lead: "Rosa Ferreira",
-      stat: `${roomsReady}/${rooms.length} rooms released`,
+      lead: "Housekeeping team",
+      stat: `${operations.data?.housekeeping.completed ?? 0} housekeeping tasks completed`,
       note: `${roomsToClean} to clean · updates arriving on WhatsApp`,
-      progress: rooms.length ? Math.round((roomsReady / rooms.length) * 100) : 100,
+      progress: operations.data?.tasks.filter(t => t.department === "Housekeeping").length ? Math.round(operations.data.housekeeping.completed / operations.data.tasks.filter(t => t.department === "Housekeeping").length * 100) : 0,
       tone: "attend" as const,
     },
     {
       name: "Maintenance",
       icon: Wrench,
-      lead: "Peter Janssens",
+      lead: "Maintenance team",
       stat: `${openIssues.length} open issues`,
       note: `${outOfService} rooms affected · ${openIssues.filter((i) => i.status === "Waiting Parts").length} waiting for parts`,
       progress: openIssues.length ? Math.round((1 - openIssues.length / Math.max(openIssues.length + 2, 1)) * 100) : 100,
@@ -152,15 +156,15 @@ function ManagerDashboard() {
 
   const briefingOpening =
     escalations.length === 0
-      ? "The AI has already handled everything routine. What is below is what still involves a person."
+      ? "Review current conversations, operational tasks and staff follow-ups below."
       : `${escalations.length} conversation${escalations.length === 1 ? "" : "s"} need your attention: ${escalations
           .map((e) => e.escalation?.reason || "room " + (e.room || ""))
           .slice(0, 2)
-          .join(", ")}. Everything else is moving.`;
+          .join(", ")}. Review the operational tasks for other outstanding work.`;
 
   return (
     <AppShell title="Morning operational briefing">
-      <DailyReportSummary />
+      <OperationsBoard operations={operations} />
       <div className="space-y-6">
         <div>
           <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
@@ -168,7 +172,7 @@ function ManagerDashboard() {
             Here is your hotel this morning.
           </h1>
           <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
-            The AI has already handled everything routine. What is below is what still involves a person.
+            Review current conversations, operational tasks and staff follow-ups below.
           </p>
         </div>
 

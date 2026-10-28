@@ -22,15 +22,20 @@ function validate(name, args) {
 
 // Authentication context comes exclusively from the stored conversation, never model arguments.
 export async function runPmsAiTools({ hotelId, conversationId, messageText, history = [], knowledge = '',
-  client = createPmsMcpClient(), request = fetch, env = process.env }) {
-  const relevant = /\b(accept|upsell|breakfast|parking|spa|extra|add|buy|purchase|price|cost|paid|charge|folio|reservation|late check[ -]?out|early check[ -]?in)\b/i.test(messageText)
+  client = createPmsMcpClient(), request = fetch, env = process.env, verification }) {
+  const context = { hotelId, conversationId };
+  if (verification?.shouldVerify(messageText)) {
+    const pending = await verification.ensure(context, messageText);
+    if (pending) return pending;
+  }
+  const relevant = /\b(accept|upsell|breakfast|parking|spa|extra|add|buy|purchase|price|cost|paid|charge|folio|reservation|booking|balance|bill|room number|late check[ -]?out|early check[ -]?in)\b/i.test(messageText)
     || history.slice(-4).some(item => item.author !== 'guest' && /ACCEPT [A-F0-9]{12}|Which product, quantity and consumption date/i.test(item.body));
   if (!relevant) return null;
-  const context = { hotelId, conversationId };
   const fallback = { replyText: 'I could not confirm this request with the hotel system. Please ask the front desk to check the reservation and product before anything is added.', status: 'staff_check' };
   try {
     const acceptance = /^ACCEPT ([A-F0-9]{12})$/i.exec(messageText.trim());
     if (acceptance) {
+      if (verification) { const pending = await verification.ensure(context, messageText); if (pending) return pending; }
       const result = unpackMcp(await client.callConversationTool(context, 'post_accepted_upsell', { offer_id: acceptance[1].toLowerCase() }));
       return { replyText: result.reply_text, status: result.status };
     }
@@ -65,6 +70,10 @@ export async function runPmsAiTools({ hotelId, conversationId, messageText, hist
       const args = JSON.parse(call.function.arguments);
       if (call.function.name === 'post_accepted_upsell') return fallback;
       validate(call.function.name, args);
+      if (verification && ['get_my_reservation', 'quote_upsell'].includes(call.function.name)) {
+        const pending = await verification.ensure(context, messageText);
+        if (pending) return pending;
+      }
       const result = unpackMcp(await client.callConversationTool(context, call.function.name, args));
       if (call.function.name === 'search_upsell_products') catalog = result;
       if (result.reply_text) return { replyText: result.reply_text, status: result.status };

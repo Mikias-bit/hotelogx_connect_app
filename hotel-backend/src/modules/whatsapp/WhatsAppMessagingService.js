@@ -9,8 +9,10 @@ export class WhatsAppMessagingService {
     if (!verifiedConnection(integration) || (integration.tokenExpiresAt && integration.tokenExpiresAt <= new Date())) return { success: false, error: 'Reconnect and verify this hotel WhatsApp account' };
     const token = decryptToken(integration.accessToken);
     if (!token) return { success: false, error: 'Cannot decrypt WhatsApp credentials' };
+    const replies = buttons.map((button, i) => typeof button === 'string' ? { id: `action_${i}`, title: button.slice(0, 20) } : button);
+    if (replies.length > 3 || replies.some(b => !b || typeof b.id !== 'string' || !b.id || b.id.length > 256 || typeof b.title !== 'string' || !b.title || b.title.length > 20) || new Set(replies.map(b => b.id)).size !== replies.length) return { success: false, error: 'Invalid WhatsApp reply buttons' };
     const payload = { messaging_product: 'whatsapp', to: recipient, type: template ? 'template' : buttons.length ? 'interactive' : 'text',
-      ...(template ? { template } : buttons.length ? { interactive: { type: 'button', body: { text }, action: { buttons: buttons.slice(0, 3).map((title, i) => ({ type: 'reply', reply: { id: `action_${i}`, title: String(title).slice(0, 20) } })) } } } : { text: { body: text, preview_url: false } }) };
+      ...(template ? { template } : replies.length ? { interactive: { type: 'button', body: { text }, action: { buttons: replies.map(reply => ({ type: 'reply', reply })) } } } : { text: { body: text, preview_url: false } }) };
     try {
       const result = await this.request(`${integration.phoneNumberId}/messages`, token, { method: 'POST', body: payload });
       if (!result.messages?.[0]?.id) return { success: false, uncertain: true, error: 'Meta did not return a message ID; check delivery before retrying' };

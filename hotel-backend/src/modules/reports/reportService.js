@@ -58,6 +58,7 @@ export function validateEnvelope(body, source) {
 export async function ingestReports(db, source, body) {
   const reports = validateEnvelope(body, source);
   return db.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${source.hotelId}`}, 0))`;
     for (const report of reports) {
       const key = { hotelId: report.hotelId, kind: report.kind, reportDate: report.reportDate, runId: report.runId };
       // Serialize duplicate deliveries by a unique-key upsert, then compare immutable content.

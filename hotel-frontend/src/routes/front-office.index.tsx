@@ -1,4 +1,5 @@
-import { DailyReportSummary } from '@/components/DailyReports';
+import { OperationsBoard } from '@/components/OperationsBoard';
+import { useOperations } from '@/lib/useOperations';
 import { PmsUpsells } from '@/components/PmsUpsells';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
@@ -28,6 +29,7 @@ export const Route = createFileRoute("/front-office/")({
 
 function FrontOfficeDashboard() {
   const user = useCurrentUser();
+  const operations = useOperations();
   const navigate = useNavigate();
   const escalations = useApp(selectors.escalations);
   const tasks = useApp((s) => s.tasks);
@@ -44,17 +46,19 @@ function FrontOfficeDashboard() {
 
   const arrivalsCount = rooms.filter((r) => r.arrivalTime).length;
   const departuresCount = rooms.filter((r) => r.guestStatus === "Departed" || r.guestStatus === "Departing").length;
-  const vipArrivalsCount = rooms.filter((r) => r.vip && r.arrivalTime).length;
+  const vipSource = operations.data?.sources.find(s => s.kind === 'vip');
+  const vipArrivalsCount = vipSource?.status === 'complete' && !vipSource.stale ? operations.data?.vips.length ?? 0 : 0;
   const earlyCheckInsCount = rooms.filter((r) => r.earlyCheckIn).length;
   const totalMessages = conversations.reduce((acc, c) => acc + (c.messages?.length || 0), 0);
 
   const lines: BriefLine[] = [
+    ...(operations.data?.briefing || []).map(text => ({ text, tone: 'ai' as const })),
     {
       text: `${arrivalsCount} arrivals scheduled today. ${readyRooms.length} rooms are released and ${arrivalsWaiting.length} arrivals are currently waiting on housekeeping.`,
       tone: arrivalsWaiting.length > 0 ? "attend" : "good",
     },
     {
-      text: `The AI answered ${totalMessages} guest messages so far and is holding ${aiHandling} conversations without requiring manual input.`,
+      text: `${totalMessages} messages recorded so far and is holding ${aiHandling} conversations without requiring manual input.`,
       tone: "ai",
     },
     {
@@ -70,11 +74,11 @@ function FrontOfficeDashboard() {
   const briefOpening =
     arrivalsWaiting.length > 0
       ? `${arrivalsWaiting.length} arrival${arrivalsWaiting.length === 1 ? " is" : "s are"} waiting on housekeeping; ${readyRooms.length} rooms are released and ready for check-in.`
-      : "All incoming rooms are ready for check-in. The AI is managing active guest conversations.";
+      : "No arrivals are currently flagged as waiting in the room feed. Review housekeeping completion and inspection status before releasing rooms.";
 
   return (
     <AppShell title="Front office — your shift, prepared">
-      <DailyReportSummary />
+      <OperationsBoard operations={operations} />
       <PmsUpsells />
       <div className="space-y-6">
         <div>
@@ -83,7 +87,7 @@ function FrontOfficeDashboard() {
             You are ahead of the desk today.
           </h1>
           <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
-            The AI has answered everything routine and prepared the rest. Read down, then work the list.
+            Review the current guest conversations, VIP preparations and departure follow-ups.
           </p>
         </div>
 
@@ -92,7 +96,7 @@ function FrontOfficeDashboard() {
           <StatCard label="Departures" value={departuresCount} hint="late checkouts monitored" icon={LogOut} tone="mute" delay={40} />
           <StatCard label="Rooms ready" value={`${readyRooms.length}/${rooms.length}`} hint={`${arrivalsWaiting.length} arrivals waiting`} icon={BedDouble} tone="attend" delay={80} />
           <StatCard label="Open requests" value={guestRequests.length} hint="in-house guests" icon={MessageSquare} tone="ai" delay={120} />
-          <StatCard label="VIP arrivals" value={vipArrivalsCount} hint={`${vipArrivalsCount} VIP expected`} icon={Crown} tone="pine" delay={160} />
+          <StatCard label="VIP preparations" value={vipArrivalsCount} hint={`${vipArrivalsCount} preparations in snapshot`} icon={Crown} tone="pine" delay={160} />
           <StatCard
             label="Escalated"
             value={escalations.length}
@@ -183,8 +187,7 @@ function FrontOfficeDashboard() {
                 <Eyebrow>Handover note</Eyebrow>
               </span>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">
-                Night shift left nothing open. Clara Bertrand in 302 has now written three times about the air conditioning —
-                the manager is deciding between an upgrade to 310 and a rate reduction. Do not promise either.
+                Review current escalations, departure balance follow-ups and task notes before taking over this shift.
               </p>
             </Card>
           </section>

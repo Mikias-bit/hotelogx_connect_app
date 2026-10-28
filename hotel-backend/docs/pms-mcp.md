@@ -49,7 +49,8 @@ the signed conversation role.
 
 Managers use **Manager → Upsells → Reservation extras and folio approvals**.
 Front office has the same approval/binding panel on its dashboard. Staff must
-verify guest identity and link the conversation to its Mews reservation UUID.
+verify guest identity and link the conversation to its Mews reservation UUID when
+automatic guest verification cannot complete.
 Do not infer ownership from a room number, name or message text.
 
 PMS prices work directly. To use a knowledge-base price, a manager selects the
@@ -87,3 +88,42 @@ manifest lists 14 tools; anonymous access and unknown hotels are rejected. The
 upsell migration is applied. Frontend type checking and production build passed;
 publishing the new screens remains pending because Netlify CLI is not logged in
 or linked to a site on this machine. No live Mews folio write has been performed.
+
+## Guest verification
+
+Before reservation-specific reads or an upsell quote/write, the backend collects
+the full booking name, check-in date, check-out date, total guests, booking email
+and WhatsApp number. The private `match_guest_for_verification` MCP tool matches
+all fields against one current Mews reservation within the hotel's verified
+services and hotel-local dates. No match, ambiguous bookings, incomplete results
+or mismatches require front-desk assistance; partial guest details are not exposed.
+
+Matching alone is not proof of ownership. A six-digit, single-use code is sent
+through the hotel's connected mailbox to the matched booking email. It expires
+after ten minutes and allows five attempts. A successful code requires a fresh
+PMS match before creating the conversation binding. The binding expires within
+24 hours (or checkout plus twelve hours, if earlier); both reads and the atomic
+folio-write claim enforce expiry. Manual verified staff bindings remain supported.
+
+The verification matcher is not in the AI's tool allowlist. Guest fields are
+encrypted in the verification session and erased on completion/cancellation or
+failure; code hashes use the server's context signing key. Outgoing codes are
+not written to the conversation. Collected verification exchanges are excluded
+from later OpenAI history. Incoming messages retain the normal conversation
+audit history. Public hotel questions remain available; `CANCEL VERIFICATION`
+cancels the collection workflow. An uncertain email send is not automatically
+repeated. Verification does not replace guest price acceptance or hotel approval.
+
+Migration: `20261027010000_guest_verification`. Tests:
+`node --test src/tests/guestVerification.test.js`, and
+`node scripts/test-verification-database.mjs .env` (disposable Neon schema, mocked
+PMS/mailbox). The sibling MCP tests validate exact matching and expiring bindings.
+Live verification still requires complete Mews credentials and the reservation's
+actual contact fields, plus a working connected hotel mailbox.
+
+Deployment on 2026-10-28: MCP revision `hotelogx-pms-mcp-00004-svt` and backend
+revision `hotelogx-connect-backend-00051-4l9` serve guest verification. Hosted
+initialization lists 15 tools, including the private matcher. Anonymous access and
+unknown hotels remain rejected. The verification migration is applied; 27 Python
+tests and the disposable Neon verification/expired-binding checks passed. This
+does not certify a live guest verification or folio posting against Mews.

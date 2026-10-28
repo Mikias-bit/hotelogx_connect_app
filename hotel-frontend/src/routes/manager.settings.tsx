@@ -1,3 +1,4 @@
+import { ReportSource } from '@/components/DailyReports';
 import { OnboardingWhatsAppStep } from '@/components/OnboardingWhatsAppStep';
 import { ManualMailboxForm } from '@/components/ManualMailboxForm';
 import { useEffect, useState } from "react";
@@ -87,6 +88,7 @@ function ManagerSettings() {
 
   return (
     <AppShell title="Settings — only the manager sees this" wide>
+      <ReportSource />
       <div className="space-y-5">
         <div>
           <Eyebrow>Settings</Eyebrow>

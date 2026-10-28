@@ -32,22 +32,11 @@ export function DailyReportSummary() {
     <Link to={`/${user.role}/reports` as any} className="mt-3 inline-block text-sm font-semibold underline">Open daily reports</Link>
   </Card>;
 }
-function Review({ report, row, reload }: { report: any; row: any; reload: () => Promise<void> }) {
-  const [status, setStatus] = useState(row.review.status), [note, setNote] = useState(row.review.note || ''), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  useEffect(() => { setStatus(row.review.status); setNote(row.review.note || ''); }, [row.review.status, row.review.note, row.contentHash]);
-  return <div className="min-w-48 space-y-2">
-    {row.review.sourceChanged && <p className="text-xs text-amber-800">Source changed. Review this item again.</p>}
-    <select aria-label="Checklist status" value={status} onChange={e => setStatus(e.target.value)} className="w-full rounded border p-1"><option value="pending">Pending</option><option value="in-progress">In progress</option><option value="done">{report.kind === 'departure_bills' ? 'Reviewed' : 'Done'}</option></select>
-    <input aria-label="Checklist note" placeholder="Staff note" maxLength={2000} value={note} onChange={e => setNote(e.target.value)} className="w-full rounded border p-1" />
-    <Button size="sm" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { await api.reviewDailyReport({ kind: report.kind, reportDate: report.reportDate, itemKey: row.itemKey, contentHash: row.contentHash, status, note }); await reload(); } catch (err) { setError(err instanceof Error ? err.message : 'Update failed'); } finally { setBusy(false); } }}>{busy ? 'Saving...' : 'Save'}</Button>
-    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
-  </div>;
-}
 export function DailyReports() {
   const [date, setDate] = useState(''); const { data, error, loading, load } = useReports(date || undefined);
   const [filter, setFilter] = useState('all'); const user = useCurrentUser();
   return <div className="space-y-5">
-    <Card><SectionTitle title="Daily reports" hint="Engine results and your team checklist progress" />
+    <Card><SectionTitle title="Daily reports" hint="Source history for audit; execution is managed on the dashboard" />
       <div className="flex flex-wrap items-center gap-3"><label>Report date <input aria-label="Report date" type="date" value={date} onChange={e => setDate(e.target.value)} className="rounded border p-2" /></label><Button variant="outline" onClick={() => setDate('')}>Latest available</Button><Button variant="outline" disabled={loading} onClick={() => void load()}>Refresh</Button></div>
       <p className="mt-2 text-sm">Reports are snapshots, not live PMS balances. Checklist updates do not charge, refund, or change a room PMS status.</p>
       {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}{loading && <p>Loading...</p>}
@@ -63,7 +52,7 @@ export function DailyReports() {
             <td className="border-b p-3 align-top">{report.kind === 'housekeeping' ? row.room : <><p>{row.guest || 'Unnamed guest'}</p><p>{row.confirmation}</p>{row.room && <p>Room {row.room}</p>}{row.additionalGuests && <p>Also: {row.additionalGuests}</p>}</>}</td>
             <td className="border-b p-3 align-top">{report.kind === 'housekeeping' ? tasks[row.task] || row.task : report.kind === 'vip' ? <>{row.type.replaceAll('_', ' ')}{row.nights && <p>{row.nights} nights</p>}</> : <><p className="font-semibold">{row.amount} {row.currency}</p><p>{row.reason}</p></>}</td>
             <td className="max-w-md whitespace-pre-wrap border-b p-3 align-top">{report.kind === 'vip' ? row.benefits : report.kind === 'housekeeping' ? <>{row.comment}{row.oldRoom && <p>Move: {row.oldRoom} to {row.newRoom}</p>}{row.checkoutTime && <p>Checkout: {row.checkoutTime}</p>}</> : <><p>{row.channel} | {row.billOwner}</p><p>{row.amountFor}</p></>}</td>
-            <td className="border-b p-3 align-top"><Review report={report} row={row} reload={load} /></td>
+            <td className="border-b p-3 align-top"><p className="text-xs">Manage preparation and follow-up from the operational dashboard.</p></td>
           </tr>)}
         </tbody></table></div>}
       </>}
@@ -71,7 +60,7 @@ export function DailyReports() {
     {user?.role === 'manager' && <ReportSource />}
   </div>;
 }
-function ReportSource() {
+export function ReportSource() {
   const [engineHotelId, setEngineHotelId] = useState(''), [configured, setConfigured] = useState(false), [token, setToken] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   useEffect(() => { let active = true; api.getReportSource().then(source => { if (active) { setEngineHotelId(source?.engineHotelId || ''); setConfigured(Boolean(source?.enabled)); } }).catch(err => { if (active) setError(err.message); }); return () => { active = false; }; }, []);
   return <Card><details><summary className="cursor-pointer font-semibold">Connect reporting engine</summary><p className="my-2 text-sm">Use the hotel ID configured in the Python engine. Creating a new key revokes the previous key for this hotel.</p><input aria-label="Engine hotel ID" placeholder="Engine hotel ID" value={engineHotelId} onChange={e => setEngineHotelId(e.target.value)} className="rounded border p-2" /><Button disabled={busy || !engineHotelId} onClick={async () => { setBusy(true); setError(''); try { const result = await api.createReportSource(engineHotelId); setToken(result.token); setConfigured(true); } catch (err) { setError(err instanceof Error ? err.message : 'Connection failed'); } finally { setBusy(false); } }}>{configured ? 'Replace engine key' : 'Create engine key'}</Button>{token && <div className="mt-3"><p>Save this key in the engine Secret Manager configuration. It is shown only once.</p><input aria-label="Engine access key" type="password" readOnly value={token} className="w-full rounded border p-2" /><Button onClick={() => void navigator.clipboard.writeText(token)}>Copy key</Button></div>}{error && <p role="alert" className="text-red-700">{error}</p>}</details></Card>;

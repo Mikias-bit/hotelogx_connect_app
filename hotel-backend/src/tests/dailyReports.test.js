@@ -10,6 +10,7 @@ function fixture() {
   const records = [], reviews = [];
   const matches = (record, where) => Object.entries(where).every(([k, value]) => typeof value === 'object' && value !== null ? (!value.lte || record[k] <= value.lte) : record[k] === value);
   const db = {
+    $executeRaw: async () => 1,
     hotel: { findUnique: async () => ({ timezone: 'Europe/Amsterdam' }) },
     dailyReport: {
       upsert: async ({ where, create }) => { const key = where.hotelId_kind_reportDate_runId; let existing = records.find(r => matches(r, key)); if (!existing) { existing = { ...create, id: 'report-' + records.length, receivedAt: new Date() }; records.push(existing); } return existing; },

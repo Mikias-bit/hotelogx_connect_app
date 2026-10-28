@@ -32,7 +32,7 @@ export function createUpsellRouter({ db = prisma, client = createPmsMcpClient(),
     const reservation = data.Reservations?.find(row => row.Id === req.body.reservationId);
     requireValue(reservation?.AccountType === 'Customer' && ['Confirmed', 'Started'].includes(reservation.State), 'An active guest reservation is required');
     const values = { hotelId: req.user.hotelId, reservationId: reservation.Id, customerId: reservation.AccountId,
-      verifiedBy: req.user.id, verifiedAt: new Date() };
+      verifiedBy: req.user.id, verifiedAt: new Date(), verificationMethod: 'staff', expiresAt: null };
     return db.pmsConversationBinding.upsert({ where: { conversationId: req.params.conversationId },
       create: { conversationId: req.params.conversationId, ...values }, update: values });
   }));

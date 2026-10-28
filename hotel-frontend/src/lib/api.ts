@@ -17,7 +17,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -139,10 +139,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateTaskStatus: (id: string, status: string, note?: string, via?: string, assignee?: string) =>
+  updateTaskStatus: (id: string, status: string, note?: string, via?: string, assignee?: string, reportContentHash?: string) =>
     request(`/tasks/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, note, via, ...(assignee !== undefined ? { assignee } : {}) }),
+      body: JSON.stringify({ status, note, via, reportContentHash, ...(assignee !== undefined ? { assignee } : {}) }),
     }),
 
   // Issues / Maintenance
@@ -238,6 +238,13 @@ export const api = {
 
   // Manager & Health
   getDailyReports: (date?: string) => request<any>(`/reports${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  getOperations: () => request<any>('/operations'),
+  updateOperation: (id: string, data: any) => request<any>(`/operations/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  assignOperations: (data: any) => request<any>('/operations/assignments', { method: 'POST', body: JSON.stringify(data) }),
+  getOperationalAssignments: () => request<any[]>('/operations/assignments'),
+  saveHousekeepingWorker: (id: string | undefined, data: any) => request<any>(`/operations/workers${id ? '/' + encodeURIComponent(id) : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) }),
+  getHousekeepingConfig: () => request<any>('/operations/config'),
+  saveHousekeepingConfig: (data: any) => request<any>('/operations/config', { method: 'PUT', body: JSON.stringify(data) }),
   reviewDailyReport: (data: any) => request<any>('/reports/review', { method: 'PATCH', body: JSON.stringify(data) }),
   getReportSource: () => request<any>('/reports/source'),
   createReportSource: (engineHotelId: string) => request<any>('/reports/source', { method: 'POST', body: JSON.stringify({ engineHotelId }) }),

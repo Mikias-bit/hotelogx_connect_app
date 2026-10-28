@@ -7,7 +7,7 @@ export function verifyMetaSignature(rawBody, signature, secret) {
   return timingSafeEqual(expected, Buffer.from(signature.slice(7), 'hex'));
 }
 export class WhatsAppWebhookService {
-  constructor({ db, withLock, automate, send, broadcast }) { Object.assign(this, { db, withLock, automate, send, broadcast }); }
+  constructor({ db, withLock, automate, send, broadcast, handleOperations }) { Object.assign(this, { db, withLock, automate, send, broadcast, handleOperations }); }
   async accept(body) {
     if (body?.object !== 'whatsapp_business_account' || !Array.isArray(body.entry)) throw Object.assign(new Error('Invalid Meta payload'), { status: 400 });
     for (const entry of body.entry) for (const change of [...(entry.changes || [])].sort((a, b) => Number(b.field === 'smb_message_echoes') - Number(a.field === 'smb_message_echoes'))) {
@@ -42,6 +42,7 @@ export class WhatsAppWebhookService {
   }
   async process(integration, message, name, assertOwned) {
     if (!message.id || !/^\d{8,15}$/.test(message.from || '')) throw new Error('Invalid Meta message');
+    if (this.handleOperations && await this.handleOperations(integration, message)) return;
     const id = `${integration.phoneNumberId}:${message.id}`;
     let receipt = await this.db.whatsAppReceipt.upsert({ where: { id }, create: { id, hotelId: integration.hotelId, phoneNumberId: integration.phoneNumberId, sender: message.from }, update: {} });
     if (['done', 'uncertain'].includes(receipt.status)) return;

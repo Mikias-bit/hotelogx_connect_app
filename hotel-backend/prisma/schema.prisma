@@ -664,7 +664,100 @@ model PmsConversationBinding {
   customerId String
   verifiedBy String
   verifiedAt DateTime @default(now())
+  expiresAt DateTime?
+  verificationMethod String @default("staff")
   @@index([hotelId])
+}
+
+model PmsGuestVerification {
+  conversationId String @id
+  hotelId String
+  status String @default("collecting")
+  step Int @default(0)
+  version Int @default(0)
+  encryptedData String @db.Text
+  codeHash String?
+  codeExpiresAt DateTime?
+  attempts Int @default(0)
+  emailHash String?
+  sendCount Int @default(0)
+  lastMessageId String?
+  lastReply String @db.Text
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([hotelId, emailHash, updatedAt])
+}
+
+model HousekeepingWorker {
+  id String @id @default(uuid())
+  hotelId String
+  name String
+  phone String
+  whatsappEnabled Boolean @default(false)
+  active Boolean @default(true)
+  language String @default("en")
+  lastInboundAt DateTime?
+  pendingProblemTaskId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([hotelId, phone])
+}
+
+model ReportTask {
+  id String @id
+  hotelId String
+  kind String
+  reportDate String
+  itemKey String
+  contentHash String
+  data Json
+  sourceGeneratedAt DateTime
+  active Boolean @default(true)
+  status String @default("New")
+  assignedWorkerId String?
+  assignmentId String?
+  assignedAt DateTime?
+  acceptedAt DateTime?
+  startedAt DateTime?
+  completedAt DateTime?
+  problemType String?
+  problemNote String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([hotelId, kind, reportDate, itemKey])
+  @@index([hotelId, active, kind])
+  @@index([assignedWorkerId, status])
+}
+
+model HousekeepingAssignment {
+  id String @id @default(uuid())
+  hotelId String
+  workerId String
+  taskIds Json
+  requestKey String
+  deliveryStatus String @default("pending")
+  messageId String?
+  lastError String?
+  createdBy String
+  createdAt DateTime @default(now())
+  @@unique([hotelId, requestKey])
+}
+
+model ReportTaskEvent {
+  id String @id @default(uuid())
+  hotelId String
+  taskId String
+  actor String
+  text String
+  at DateTime @default(now())
+  @@index([hotelId, taskId, at])
+}
+
+model HousekeepingConfig {
+  hotelId String @id
+  templateName String?
+  templateLanguage String @default("en_US")
 }
 
 model PmsUpsellProduct {

@@ -8,6 +8,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { setTaskStatus } from "@/lib/store";
+import { useCurrentUser } from '@/lib/session';
 import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Badge, Button, priorityTone, statusTone } from "./ui";
@@ -32,6 +33,8 @@ const sourceIcon: Record<string, React.ComponentType<{ className?: string }>> = 
 };
 
 export function TaskRow({ task, onOpen, showDepartment = true }: { task: Task; onOpen?: (task: Task) => void; showDepartment?: boolean }) {
+  const user = useCurrentUser();
+  const canUpdate = !task.stale && !(task.source === 'Daily report' && task.department === 'Housekeeping' && user?.role === 'front-office');
   const SourceIcon = (task?.source ? sourceIcon[task.source] : undefined) ?? DefaultSourceIcon;
   const done = task?.status === "Completed";
   return (
@@ -83,9 +86,9 @@ export function TaskRow({ task, onOpen, showDepartment = true }: { task: Task; o
 
       <div className="flex shrink-0 items-center gap-2 sm:justify-end">
         <Badge tone={statusTone(task.status)} dot>
-          {task.status}
+          {task.executionStatus || task.status}
         </Badge>
-        {!done && (
+        {!done && canUpdate && (
           <div className="flex gap-1.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
             {task.status !== "In Progress" && (
               <Button size="sm" variant="quiet" onClick={() => setTaskStatus(task.id, "In Progress")}>

@@ -516,7 +516,7 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
   const task = store.state.tasks.find((t) => t.id === taskId);
   if (!task) return;
 
-  const result = await api.updateTaskStatus(taskId, status, note, "dashboard");
+  const result = await api.updateTaskStatus(taskId, status, note, "dashboard", undefined, task.reportContentHash);
   if (!result) {
     toast(`Failed to update task`, "urgent", "Server error — please try again");
     return;
@@ -528,12 +528,15 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
       t.id === taskId
         ? {
           ...t,
+          ...serverTask,
           status: (serverTask.status ?? status) as TaskStatus,
           trail: Array.isArray(serverTask.trail) ? serverTask.trail : t.trail,
         }
         : t,
     ),
   }));
+
+  if (task.source === 'Daily report') window.dispatchEvent(new Event('hotelogx:operations-updated'));
 
   if (status === "Completed") {
     pushActivity({ kind: "task", text: `Completed — ${task.title}${task.room ? ` (${task.room})` : ""}`, meta: task.department });
@@ -555,6 +558,9 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
 }
 
 export async function assignTask(taskId: string, assignee: string) {
+  if (store.state.tasks.find(t => t.id === taskId)?.source === 'Daily report') {
+    toast('Use the housekeeping dashboard worker picker', 'attend', 'Select tasks and a registered worker, then Assign & Send WhatsApp.'); return;
+  }
   const result = await api.updateTaskStatus(taskId, "Assigned", `Assigned to ${assignee}`, "whatsapp", assignee);
   if (!result) {
     toast(`Failed to assign task`, "urgent", "Server error — please try again");

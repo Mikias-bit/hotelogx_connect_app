@@ -1,3 +1,4 @@
+import { readOperations } from '../reports/reportOperations.js';
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 
@@ -52,11 +53,13 @@ export const getBriefing = async (req, res, next) => {
       prisma.activityItem.findMany({ where: { hotelId }, take: 10, orderBy: { id: 'desc' } }),
     ]);
 
+    const daily = await readOperations(prisma, req.user);
     const totalRooms = rooms.length || 0;
     const occupiedRooms = rooms.filter((r) => r.guestStatus !== 'Vacant').length;
     const cleanRooms = rooms.filter((r) => r.status === 'Clean' || r.status === 'Inspected').length;
     const dirtyRooms = rooms.filter((r) => r.status === 'Dirty').length;
-    const vipArrivals = rooms.filter((r) => r.vip && r.arrivalTime).length;
+    const vipSource = daily.sources.find(s => s.kind === 'vip');
+    const vipArrivals = vipSource?.status === 'complete' && !vipSource.stale ? daily.vips.length : 0;
 
     const escalations = conversations
       .filter((c) => c.escalation)
@@ -81,57 +84,10 @@ export const getBriefing = async (req, res, next) => {
 
     const occupancyPct = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
 
-    // Synthesize Dynamic Operational AI Advice
-    const aiAdvice = [];
-    if (dirtyRooms > cleanRooms) {
-      aiAdvice.push({
-        topic: 'Housekeeping Pace',
-        level: 'attend',
-        title: `${dirtyRooms} dirty rooms vs ${cleanRooms} ready`,
-        action: 'Prioritize departure cleaning before standard 15:00 check-in window.',
-      });
-    } else {
-      aiAdvice.push({
-        topic: 'Housekeeping Pace',
-        level: 'good',
-        title: 'Housekeeping turnaround on schedule',
-        action: `${cleanRooms} rooms inspected and released for arrivals.`,
-      });
-    }
-
-    if (vipArrivals > 0) {
-      aiAdvice.push({
-        topic: 'VIP Arrivals',
-        level: 'urgent',
-        title: `${vipArrivals} VIP arrival${vipArrivals > 1 ? 's' : ''} scheduled today`,
-        action: 'Verify welcome praline amenities and room key cards at reception prior to arrival.',
-      });
-    }
-
-    if (occupancyPct >= 80) {
-      aiAdvice.push({
-        topic: 'Revenue & Upsell',
-        level: 'good',
-        title: `High occupancy day (${occupancyPct}%)`,
-        action: 'Restrict unpaid late check-outs and offer premium room upgrades to arriving guests.',
-      });
-    } else {
-      aiAdvice.push({
-        topic: 'Direct Bookings',
-        level: 'ai',
-        title: `Current occupancy at ${occupancyPct}%`,
-        action: 'Encourage direct website booking links for all incoming inquiries on WhatsApp.',
-      });
-    }
-
-    if (openIssues > 0) {
-      aiAdvice.push({
-        topic: 'Maintenance',
-        level: 'attend',
-        title: `${openIssues} active maintenance ticket${openIssues > 1 ? 's' : ''}`,
-        action: 'Follow up with engineering via WhatsApp simulator to clear rooms back to service.',
-      });
-    }
+    const aiAdvice = daily.briefing.map(text => ({ topic: 'Daily operations', level: 'ai', title: text, action: 'Review the corresponding operational tasks.' }));
+    if (daily.housekeeping.unassigned) aiAdvice.push({ topic: 'Housekeeping', level: 'attend', title: `${daily.housekeeping.unassigned} tasks need assignment`, action: 'Select tasks and an available housekeeper.' });
+    if (daily.housekeeping.problems) aiAdvice.push({ topic: 'Housekeeping', level: 'urgent', title: `${daily.housekeeping.problems} reported problems`, action: 'Review DND and maintenance notes before reassigning work.' });
+    if (openIssues) aiAdvice.push({ topic: 'Maintenance', level: 'attend', title: `${openIssues} open maintenance issues`, action: 'Review current maintenance tickets.' });
 
     const briefing = {
       hotelName: hotel?.name || 'Hotel',
@@ -144,13 +100,14 @@ export const getBriefing = async (req, res, next) => {
         vipArrivals,
       },
       operations: {
-        openTasks,
+        openTasks: openTasks + daily.tasks.filter(t => t.status !== 'Completed').length,
         openIssues,
         pendingEscalations: escalations.length,
       },
       upsellRevenue: acceptedUpsellsTotal,
       escalations,
       aiAdvice,
+      dailyOperations: daily,
       recentActivity: activities,
     };
 

@@ -1,4 +1,5 @@
 import reportRoutes from './modules/reports/reportRoutes.js';
+import operationsRoutes from './modules/reports/operationsRoutes.js';
 import { gmailPushHandler, gmailWorkerRouter, gmailManagerRouter } from './modules/email/gmail/gmailRoutes.js';
 import { verifyWebhook, handleWebhook } from './modules/whatsapp/whatsappController.js';
 import { googleOAuthCallbackController, microsoftOAuthCallbackController } from './modules/email/emailController.js';
@@ -49,6 +50,7 @@ router.get('/email-detect', handleEmailDetect);
 router.use('/auth', authRoutes);
 router.use('/rooms', roomsRoutes);
 router.use('/reports', reportRoutes);
+router.use('/operations', operationsRoutes);
 router.use('/tasks', tasksRoutes);
 router.use('/issues', issuesRoutes);
 router.use('/conversations', conversationsRoutes);

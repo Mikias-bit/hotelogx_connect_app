@@ -1,5 +1,8 @@
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
+import { readOperations, updateReportTask } from '../reports/reportOperations.js';
+import { allowedKinds } from '../reports/reportService.js';
+import { realtimeService } from '../../services/realtimeService.js';
 
 export const getTasks = async (req, res, next) => {
   try {
@@ -21,7 +24,8 @@ export const getTasks = async (req, res, next) => {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return successResponse(res, tasks, 'Tasks list');
+    const operational = allowedKinds(req.user.role).length ? (await readOperations(prisma, req.user)).tasks.filter(t => (!department || t.department === department) && (!status || t.status === status) && (!source || t.source === source)) : [];
+    return successResponse(res, [...operational, ...tasks], 'Tasks list');
   } catch (error) {
     next(error);
   }
@@ -32,6 +36,10 @@ export const getTaskById = async (req, res, next) => {
     const hotelId = req.user?.hotelId;
     if (!hotelId) return errorResponse(res, 'Authentication and hotel context required', 401);
     const { id } = req.params;
+    if (id.startsWith('rt-')) {
+      const task = (await readOperations(prisma, req.user)).tasks.find(t => t.id === id);
+      return task ? successResponse(res, task) : errorResponse(res, 'Task not found', 404);
+    }
     const task = await prisma.task.findFirst({
       where: { id, hotelId },
       include: { trail: true },
@@ -128,6 +136,14 @@ export const updateTaskStatus = async (req, res, next) => {
     if (!hotelId) return errorResponse(res, 'Authentication and hotel context required', 401);
     const { id } = req.params;
     const { status, note, via = 'dashboard', assignee } = req.body;
+    if (id.startsWith('rt-')) {
+      try {
+        if (assignee !== undefined) return errorResponse(res, 'Use the housekeeping assignment picker to assign a registered worker', 400);
+        const task = await updateReportTask(prisma, req.user, id, req.body);
+        realtimeService.broadcastToHotel(hotelId, 'reports:updated', { refresh: true });
+        return successResponse(res, task);
+      } catch (error) { if (error.status) return errorResponse(res, error.message, error.status); throw error; }
+    }
 
     const existing = await prisma.task.findFirst({
       where: { id, hotelId },

@@ -13,7 +13,7 @@ in the sibling hotelogx_app checkout; deploy that checkout through its usual pro
 
 ## Connect each real hotel
 
-1. Sign in as that hotel's manager and open Daily reports > Connect reporting engine.
+1. Sign in as that hotel's manager and open Settings > Connect reporting engine.
 2. Enter the exact hotel ID from the Python engine configuration and create an engine key.
 3. Store the key in Secret Manager, never frontend variables or source control.
 4. Configure the engine with CONNECT_REPORTS_URL set to the backend HTTPS URL ending
@@ -31,8 +31,10 @@ a hotel ID supplied by the client cannot override that destination.
 
 The engine keeps its existing JSON/PDF bucket exports, then archives and sends a
 structured snapshot. Connect stores housekeeping, VIP and departure-bill snapshots
-in Neon and displays them in Daily reports and dashboard summaries. The daily
-report checklist is separate from manually created tasks and live PMS room status.
+in Neon and projects them into operational tasks, VIP preparation and departure
+balance follow-ups. See [report-operations.md](report-operations.md) for worker
+assignment, WhatsApp execution and dashboard updates. Source history remains
+available for audit. Operational completion is separate from live PMS room status.
 Managers/front office see all three reports; housekeeping sees housekeeping only.
 Dates use the engine hotel timezone. The latest available report is clearly dated;
 older reports are flagged and users can select an explicit date.

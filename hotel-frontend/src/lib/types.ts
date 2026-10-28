@@ -15,6 +15,7 @@ export type Department =
 export type TaskStatus = "New" | "Assigned" | "In Progress" | "Waiting" | "Completed" | "Escalated";
 export type Priority = "Urgent" | "High" | "Normal" | "Low";
 export type TaskSource =
+  | "Daily report"
   | "Guest WhatsApp"
   | "Guest Email"
   | "AI Detection"
@@ -126,6 +127,17 @@ export interface Conversation {
 }
 
 export interface Task {
+  reportContentHash?: string;
+  reportDate?: string;
+  stale?: boolean;
+  executionStatus?: string;
+  assignedWorkerId?: string;
+  assignedAt?: string;
+  acceptedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  problemType?: string;
+  problemNote?: string;
   id: string;
   title: string;
   detail?: string;

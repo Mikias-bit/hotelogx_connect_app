@@ -33,6 +33,9 @@ export function createPmsMcpClient({ env = process.env, request = fetch, identit
     return rpc(2, method, params);
   }
   return {
+    matchGuestForVerification: ({ hotelId, conversationId }, args) => call(
+      { id: conversationId, hotelId, role: 'conversation' }, 'tools/call',
+      { name: 'match_guest_for_verification', arguments: args }, conversationId, true),
     callConversationTool: ({ hotelId, conversationId }, name, args = {}) => {
       if (!conversationTools.has(name)) throw new Error('Tool is not allowed in guest conversations');
       return call({ id: conversationId, hotelId, role: 'conversation' }, 'tools/call', { name, arguments: args }, conversationId, true);
