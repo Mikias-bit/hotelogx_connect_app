@@ -21,7 +21,7 @@ VIP rows create preparation tasks with the actual reported benefits. Departure r
 ## Housekeeping workflow
 
 1. Connect the hotel's real internal (or both-use) WhatsApp integration.
-2. In the housekeeping dashboard, open **Workers & WhatsApp settings** and register/enable the hotel's housekeepers.
+2. In **Housekeeping > Assignments** (`/housekeeping/assignments`), open **Workers & WhatsApp settings** and register/enable the hotel's housekeepers.
 3. Ask each worker to send `TASKS` to the internal number. Otherwise configure an approved Meta template before sending business-initiated notifications.
 4. Select the generated tasks, choose a saved worker, then **Assign & Send WhatsApp**. The worker picker shows current workload. A saved assignment does not imply the message was delivered: inspect the displayed submission status.
 5. The worker taps **Accept**, **Start**, **Completed**, or **Problem**. Problems offer **Do not disturb** and **Maintenance**, then accept a text description. `TASKS` refreshes current assignments.

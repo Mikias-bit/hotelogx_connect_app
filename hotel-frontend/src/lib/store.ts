@@ -559,7 +559,7 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
 
 export async function assignTask(taskId: string, assignee: string) {
   if (store.state.tasks.find(t => t.id === taskId)?.source === 'Daily report') {
-    toast('Use the housekeeping dashboard worker picker', 'attend', 'Select tasks and a registered worker, then Assign & Send WhatsApp.'); return;
+    toast('Use the Housekeeping Assignments page', 'attend', 'Select tasks and a registered worker, then Assign & Send WhatsApp.'); return;
   }
   const result = await api.updateTaskStatus(taskId, "Assigned", `Assigned to ${assignee}`, "whatsapp", assignee);
   if (!result) {

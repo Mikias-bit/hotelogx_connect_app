@@ -42,6 +42,7 @@ const navByRole: Record<Role, NavItem[]> = {
   ],
   housekeeping: [
     { to: "/housekeeping", label: "Dashboard", icon: Gauge },
+    { to: "/housekeeping/assignments", label: "Assignments", icon: ClipboardList },
     { to: "/housekeeping/rooms", label: "Rooms", icon: BedDouble },
     { to: "/housekeeping/tasks", label: "Tasks", icon: ClipboardList },
   ],

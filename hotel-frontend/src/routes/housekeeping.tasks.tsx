@@ -12,7 +12,7 @@ export const Route = createFileRoute("/housekeeping/tasks")({
 });
 
 function HousekeepingTasks() {
-  const tasks = useApp((s) => s.tasks.filter((t) => t.department === "Housekeeping"));
+  const tasks = useApp((s) => s.tasks.filter((t) => t.department === "Housekeeping" && t.source !== "Daily report"));
   const teamCleaners = useApp(selectors.housekeepingTeam);
   const [composer, setComposer] = useState(false);
   const open = tasks.filter((t) => t.status !== "Completed");
