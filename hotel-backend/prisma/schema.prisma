@@ -41,6 +41,25 @@ model Hotel {
   dailyReportSource DailyReportSource?
   dailyReports DailyReport[]
   dailyReportReviews DailyReportReview[]
+  lostFoundItems LostFoundItem[]
+}
+
+model LostFoundItem {
+  id              String   @id @default(uuid())
+  hotelId         String
+  category        String   @db.VarChar(80)
+  item            String   @db.VarChar(200)
+  description     String   @db.Text
+  foundLocation   String   @db.VarChar(200)
+  storageLocation String   @db.VarChar(200)
+  version         Int      @default(1)
+  createdBy       String
+  updatedBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+  hotel           Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId, createdAt, id])
 }
 
 model User {

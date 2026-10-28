@@ -1,5 +1,27 @@
 export type Role = "manager" | "front-office" | "housekeeping" | "maintenance";
 
+export interface LostFoundInput {
+  category: string;
+  item: string;
+  description: string;
+  foundLocation: string;
+  storageLocation: string;
+}
+
+export interface LostFoundItem extends LostFoundInput {
+  id: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LostFoundList {
+  items: LostFoundItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export type Channel = "whatsapp" | "gmail" | "outlook" | "email";
 export type Stage = "pre-arrival" | "in-house" | "post-stay";
 export type AiStatus = "ai-handling" | "human-takeover" | "escalated" | "resolved";

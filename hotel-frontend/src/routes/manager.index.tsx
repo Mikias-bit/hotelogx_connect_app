@@ -2,6 +2,7 @@ import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
+  Archive,
   ArrowRight,
   BedDouble,
   ClipboardList,
@@ -170,14 +171,17 @@ function ManagerDashboard() {
   return (
     <AppShell title="Morning operational briefing">
       <div className="space-y-6">
-        <div>
-          <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
-          <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[31px]">
-            Here is your hotel this morning.
-          </h1>
-          <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
-            Review current conversations, operational tasks and staff follow-ups below.
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
+            <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[31px]">
+              Here is your hotel this morning.
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
+              Review current conversations, operational tasks and staff follow-ups below.
+            </p>
+          </div>
+          <Button variant="outline" icon={Archive} onClick={() => navigate({ to: "/manager/lost-found" })}>Lost &amp; Found</Button>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">

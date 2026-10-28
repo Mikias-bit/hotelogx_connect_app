@@ -1,3 +1,5 @@
+import type { LostFoundInput, LostFoundItem, LostFoundList } from "./types";
+
 const isLocalBrowser = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 export const API_BASE_URL = isLocalBrowser
   ? (import.meta.env.VITE_API_LOCAL_URL || 'http://localhost:5000/api')
@@ -17,7 +19,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -118,6 +120,9 @@ async function invitationRequest<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  getLostFound: (query = '', page = 1) => request<LostFoundList>(`/lost-found?q=${encodeURIComponent(query)}&page=${page}`),
+  createLostFound: (data: LostFoundInput) => request<LostFoundItem>('/lost-found', { method: 'POST', body: JSON.stringify(data) }),
+  updateLostFound: (id: string, data: LostFoundInput & { version: number }) => request<LostFoundItem>(`/lost-found/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   getPmsUpsells: (conversationId?: string) => request<any>(`/pms/upsells${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
   searchPmsProducts: (q: string) => request<any>(`/pms/upsells/products/search?q=${encodeURIComponent(q)}`),
   bindPmsConversation: (id: string, reservationId: string) => request<any>(`/pms/upsells/bindings/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ reservationId, identityVerified: true }) }),

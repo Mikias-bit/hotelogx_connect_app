@@ -3,6 +3,7 @@ import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
+  Archive,
   ArrowRight,
   BedDouble,
   ClipboardList,
@@ -83,14 +84,17 @@ function FrontOfficeDashboard() {
   return (
     <AppShell title="Front office — your shift, prepared">
       <div className="space-y-6">
-        <div>
-          <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
-          <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[30px]">
-            You are ahead of the desk today.
-          </h1>
-          <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
-            Review the current guest conversations, VIP preparations and departure follow-ups.
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
+            <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[30px]">
+              You are ahead of the desk today.
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
+              Review the current guest conversations, VIP preparations and departure follow-ups.
+            </p>
+          </div>
+          <Button variant="outline" icon={Archive} onClick={() => navigate({ to: "/front-office/lost-found" })}>Lost &amp; Found</Button>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

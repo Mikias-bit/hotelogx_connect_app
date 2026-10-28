@@ -20,6 +20,7 @@ import { Route as ManagerUpsellsRouteImport } from './routes/manager.upsells'
 import { Route as ManagerTasksRouteImport } from './routes/manager.tasks'
 import { Route as ManagerSettingsRouteImport } from './routes/manager.settings'
 import { Route as ManagerReportsRouteImport } from './routes/manager.reports'
+import { Route as ManagerLostFoundRouteImport } from './routes/manager.lost-found'
 import { Route as ManagerConversationsRouteImport } from './routes/manager.conversations'
 import { Route as MaintenanceTasksRouteImport } from './routes/maintenance.tasks'
 import { Route as MaintenanceIssuesRouteImport } from './routes/maintenance.issues'
@@ -29,6 +30,7 @@ import { Route as HousekeepingReportsRouteImport } from './routes/housekeeping.r
 import { Route as HousekeepingAssignmentsRouteImport } from './routes/housekeeping.assignments'
 import { Route as FrontOfficeTasksRouteImport } from './routes/front-office.tasks'
 import { Route as FrontOfficeReportsRouteImport } from './routes/front-office.reports'
+import { Route as FrontOfficeLostFoundRouteImport } from './routes/front-office.lost-found'
 import { Route as FrontOfficeConversationsRouteImport } from './routes/front-office.conversations'
 
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -86,6 +88,11 @@ const ManagerReportsRoute = ManagerReportsRouteImport.update({
   path: '/manager/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManagerLostFoundRoute = ManagerLostFoundRouteImport.update({
+  id: '/manager/lost-found',
+  path: '/manager/lost-found',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ManagerConversationsRoute = ManagerConversationsRouteImport.update({
   id: '/manager/conversations',
   path: '/manager/conversations',
@@ -131,6 +138,11 @@ const FrontOfficeReportsRoute = FrontOfficeReportsRouteImport.update({
   path: '/front-office/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FrontOfficeLostFoundRoute = FrontOfficeLostFoundRouteImport.update({
+  id: '/front-office/lost-found',
+  path: '/front-office/lost-found',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FrontOfficeConversationsRoute =
   FrontOfficeConversationsRouteImport.update({
     id: '/front-office/conversations',
@@ -143,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
   '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
@@ -152,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
   '/manager/settings': typeof ManagerSettingsRoute
   '/manager/tasks': typeof ManagerTasksRoute
@@ -166,6 +180,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
   '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
@@ -175,6 +190,7 @@ export interface FileRoutesByTo {
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
   '/manager/settings': typeof ManagerSettingsRoute
   '/manager/tasks': typeof ManagerTasksRoute
@@ -190,6 +206,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
   '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
@@ -199,6 +216,7 @@ export interface FileRoutesById {
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
   '/manager/settings': typeof ManagerSettingsRoute
   '/manager/tasks': typeof ManagerTasksRoute
@@ -215,6 +233,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/lost-found'
     | '/front-office/reports'
     | '/front-office/tasks'
     | '/housekeeping/assignments'
@@ -224,6 +243,7 @@ export interface FileRouteTypes {
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/lost-found'
     | '/manager/reports'
     | '/manager/settings'
     | '/manager/tasks'
@@ -238,6 +258,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/lost-found'
     | '/front-office/reports'
     | '/front-office/tasks'
     | '/housekeeping/assignments'
@@ -247,6 +268,7 @@ export interface FileRouteTypes {
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/lost-found'
     | '/manager/reports'
     | '/manager/settings'
     | '/manager/tasks'
@@ -261,6 +283,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/lost-found'
     | '/front-office/reports'
     | '/front-office/tasks'
     | '/housekeeping/assignments'
@@ -270,6 +293,7 @@ export interface FileRouteTypes {
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/lost-found'
     | '/manager/reports'
     | '/manager/settings'
     | '/manager/tasks'
@@ -285,6 +309,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   FrontOfficeConversationsRoute: typeof FrontOfficeConversationsRoute
+  FrontOfficeLostFoundRoute: typeof FrontOfficeLostFoundRoute
   FrontOfficeReportsRoute: typeof FrontOfficeReportsRoute
   FrontOfficeTasksRoute: typeof FrontOfficeTasksRoute
   HousekeepingAssignmentsRoute: typeof HousekeepingAssignmentsRoute
@@ -294,6 +319,7 @@ export interface RootRouteChildren {
   MaintenanceIssuesRoute: typeof MaintenanceIssuesRoute
   MaintenanceTasksRoute: typeof MaintenanceTasksRoute
   ManagerConversationsRoute: typeof ManagerConversationsRoute
+  ManagerLostFoundRoute: typeof ManagerLostFoundRoute
   ManagerReportsRoute: typeof ManagerReportsRoute
   ManagerSettingsRoute: typeof ManagerSettingsRoute
   ManagerTasksRoute: typeof ManagerTasksRoute
@@ -383,6 +409,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ManagerReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manager/lost-found': {
+      id: '/manager/lost-found'
+      path: '/manager/lost-found'
+      fullPath: '/manager/lost-found'
+      preLoaderRoute: typeof ManagerLostFoundRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/manager/conversations': {
       id: '/manager/conversations'
       path: '/manager/conversations'
@@ -446,6 +479,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FrontOfficeReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/front-office/lost-found': {
+      id: '/front-office/lost-found'
+      path: '/front-office/lost-found'
+      fullPath: '/front-office/lost-found'
+      preLoaderRoute: typeof FrontOfficeLostFoundRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/front-office/conversations': {
       id: '/front-office/conversations'
       path: '/front-office/conversations'
@@ -461,6 +501,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   FrontOfficeConversationsRoute: FrontOfficeConversationsRoute,
+  FrontOfficeLostFoundRoute: FrontOfficeLostFoundRoute,
   FrontOfficeReportsRoute: FrontOfficeReportsRoute,
   FrontOfficeTasksRoute: FrontOfficeTasksRoute,
   HousekeepingAssignmentsRoute: HousekeepingAssignmentsRoute,
@@ -470,6 +511,7 @@ const rootRouteChildren: RootRouteChildren = {
   MaintenanceIssuesRoute: MaintenanceIssuesRoute,
   MaintenanceTasksRoute: MaintenanceTasksRoute,
   ManagerConversationsRoute: ManagerConversationsRoute,
+  ManagerLostFoundRoute: ManagerLostFoundRoute,
   ManagerReportsRoute: ManagerReportsRoute,
   ManagerSettingsRoute: ManagerSettingsRoute,
   ManagerTasksRoute: ManagerTasksRoute,
