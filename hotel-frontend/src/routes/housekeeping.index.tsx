@@ -1,11 +1,195 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { AppShell } from '@/components/AppShell';
-import { OperationsBoard } from '@/components/OperationsBoard';
-import { TaskRow } from '@/components/TaskRow';
-import { Card, SectionTitle } from '@/components/ui';
-import { useApp } from '@/lib/store';
-export const Route = createFileRoute('/housekeeping/')({ component: HousekeepingDashboard });
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { AlarmClock, ArrowRight, BedDouble, CheckCircle2, Crown, DoorClosed, LogIn, Sparkles } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
+import { WhatsAppOps } from "@/components/WhatsAppOps";
+import { Badge, Button, Card, Empty, Eyebrow, SectionTitle, StatCard, statusTone } from "@/components/ui";
+import { selectors, setRoomStatus, useApp } from "@/lib/store";
+import { useCurrentUser } from "@/lib/session";
+import { greeting } from "@/lib/utils";
+
+export const Route = createFileRoute("/housekeeping/")({
+  component: HousekeepingDashboard,
+});
+
+const released = (status: string) => status === "Clean" || status === "Inspected";
+
 function HousekeepingDashboard() {
-  const requests = useApp(s => s.tasks).filter(t => t.department === 'Housekeeping' && t.source !== 'Daily report' && t.status !== 'Completed');
-  return <AppShell title="Housekeeping assignments"><OperationsBoard /><Card><SectionTitle title="Additional guest requests" hint="Requests received outside the daily cleaning plan" /><ul>{requests.map(task => <TaskRow key={task.id} task={task} />)}</ul>{!requests.length && <p className="text-sm">No additional open requests.</p>}</Card></AppShell>;
+  const user = useCurrentUser();
+  const navigate = useNavigate();
+  const rooms = useApp((s) => s.rooms);
+  const tasks = useApp((s) => s.tasks);
+  const team = useApp(selectors.housekeepingTeam);
+
+  const toClean = rooms.filter((r) => r.status === "Dirty");
+  const inProgress = rooms.filter((r) => r.status === "Cleaning");
+  const cleaned = rooms.filter((r) => released(r.status));
+  const blocked = rooms.filter((r) => r.status === "DND" || r.status === "Guest Inside");
+  const vip = rooms.filter((r) => r.vip);
+  const early = rooms.filter((r) => r.arrivalTime && r.arrivalTime < "15:00");
+  const late = rooms.filter((r) => r.arrivalTime && !released(r.status) && r.arrivalTime < "15:00");
+  const priority = rooms
+    .filter((r) => !released(r.status) && r.status !== "Blocked")
+    .sort((a, b) => {
+      const rank = { Urgent: 0, High: 1, Normal: 2, Low: 3 } as const;
+      return rank[a.priority] - rank[b.priority] || (a.arrivalTime ?? "99:99").localeCompare(b.arrivalTime ?? "99:99");
+    })
+    .slice(0, 6);
+  const openTasks = tasks.filter((t) => t.department === "Housekeeping" && t.status !== "Completed");
+
+  return (
+    <AppShell title="Housekeeping — the floor at a glance">
+      <div className="space-y-6">
+        <div>
+          <Eyebrow>
+            {greeting()}, {user?.name.split(" ")[0] ?? "team"}
+          </Eyebrow>
+          <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[30px]">
+            {cleaned.length} of {rooms.length} rooms released.
+          </h1>
+          <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
+            Your team never has to open this. Everything here arrives from the buttons they tap on WhatsApp.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          <StatCard label="To clean" value={toClean.length} hint="waiting to start" icon={BedDouble} tone="urgent" delay={0} onClick={() => navigate({ to: "/housekeeping/rooms" })} />
+          <StatCard label="In progress" value={inProgress.length} hint="being cleaned now" icon={Sparkles} tone="attend" delay={40} />
+          <StatCard label="Cleaned" value={cleaned.length} hint="released to reception" icon={CheckCircle2} tone="good" delay={80} />
+          <StatCard label="Late" value={late.length} hint="arrival before the room" icon={AlarmClock} tone="urgent" emphasis={late.length > 0} delay={120} />
+          <StatCard label="DND / occupied" value={blocked.length} hint="cannot enter yet" icon={DoorClosed} tone="mute" delay={160} />
+          <StatCard label="VIP rooms" value={vip.length} hint="extra preparation" icon={Crown} tone="pine" delay={200} />
+          <StatCard label="Early arrivals" value={early.length} hint="before 15:00" icon={LogIn} tone="ai" delay={240} />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr] lg:items-start">
+          <div className="space-y-4">
+            <section>
+              <SectionTitle
+                title="Priority rooms"
+                hint="Sorted by arrival time and priority"
+                action={
+                  <Button size="sm" variant="outline" icon={ArrowRight} onClick={() => navigate({ to: "/housekeeping/rooms" })}>
+                    All rooms
+                  </Button>
+                }
+              />
+              <Card pad={false}>
+                {priority.length === 0 ? (
+                  <div className="p-4">
+                    <Empty title="Everything is released" hint="Nothing is waiting on housekeeping right now." />
+                  </div>
+                ) : (
+                  <ul>
+                    {priority.map((r) => (
+                      <li key={r.number} className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-3 last:border-b-0">
+                        <span className="tnum inline-flex h-8 min-w-12 items-center justify-center rounded-[8px] border border-line bg-paper-2 font-mono text-[13px] font-medium text-ink">
+                          {r.number}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-1.5 text-[13.5px] font-medium text-ink">
+                            {r.cleaningType}
+                            {r.vip && <Crown className="size-3 text-pine-600" />}
+                          </p>
+                          <p className="text-[11.5px] text-ink-4">
+                            {r.guestStatus}
+                            {r.arrivalTime && ` · arrival ${r.arrivalTime}`}
+                            {r.cleaner && ` · ${r.cleaner}`}
+                          </p>
+                          {r.note && <p className="mt-0.5 text-[11.5px] text-attend">{r.note}</p>}
+                        </div>
+                        <Badge tone={statusTone(r.status)} dot>
+                          {r.status}
+                        </Badge>
+                        <div className="flex gap-1.5">
+                          {r.status !== "Cleaning" && (
+                            <Button size="sm" variant="quiet" onClick={() => void setRoomStatus(r.number, "Cleaning")}>
+                              Start
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" onClick={() => void setRoomStatus(r.number, "Clean")}>
+                            Release
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </section>
+
+            <section>
+              <SectionTitle title="Team today" hint="Rooms assigned per attendant" />
+              {team.length === 0 ? (
+                <Empty title="No attendants yet" hint="Housekeeping staff appear here once rooms are assigned." />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {team.map((name) => {
+                    const assigned = rooms.filter((r) => r.cleaner === name);
+                    const done = assigned.filter((r) => released(r.status)).length;
+                    return (
+                      <Card key={name} className="p-4">
+                        <p className="text-[13.5px] font-medium text-ink">{name}</p>
+                        <p className="tnum mt-1 font-mono text-[12px] text-ink-3">
+                          {done}/{assigned.length} released
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {assigned.map((r) => (
+                            <span key={r.number} className="tnum rounded-[6px] border border-line bg-paper px-1.5 py-0.5 font-mono text-[11px] text-ink-2">
+                              {r.number}
+                            </span>
+                          ))}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <SectionTitle
+                title="Open housekeeping tasks"
+                hint="Guest requests routed automatically"
+                action={
+                  <Button size="sm" variant="outline" icon={ArrowRight} onClick={() => navigate({ to: "/housekeeping/assignments" })}>
+                    Assign tasks
+                  </Button>
+                }
+              />
+              <Card pad={false}>
+                <ul>
+                  {openTasks.map((t) => (
+                    <li key={t.id} className="flex items-center gap-3 border-b border-line-soft px-4 py-3 last:border-b-0">
+                      <span className="tnum inline-flex h-7 min-w-11 items-center justify-center rounded-[7px] border border-line bg-paper-2 font-mono text-[12px] text-ink-2">
+                        {t.room ?? "—"}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium text-ink">{t.title}</p>
+                        <p className="text-[11.5px] text-ink-4">
+                          {t.assignee ?? "Unassigned"}
+                          {t.due && ` · due ${t.due}`}
+                        </p>
+                      </div>
+                      <Badge tone={statusTone(t.status)} dot>
+                        {t.status}
+                      </Badge>
+                    </li>
+                  ))}
+                  {openTasks.length === 0 && (
+                    <li className="p-4">
+                      <Empty title="No open tasks" hint="Guest requests appear here the moment the AI receives one." />
+                    </li>
+                  )}
+                </ul>
+              </Card>
+            </section>
+          </div>
+
+          <Card className="lg:sticky lg:top-20 lg:h-[calc(100dvh-8rem)]">
+            <WhatsAppOps department="Housekeeping" />
+          </Card>
+        </div>
+      </div>
+    </AppShell>
+  );
 }
