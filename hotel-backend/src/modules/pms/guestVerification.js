@@ -5,7 +5,7 @@ import { emailService } from '../email/emailService.js';
 import { createPmsMcpClient } from './pmsMcpClient.js';
 import { unpackMcp } from './pmsAiTools.js';
 
-const fields = ['full_name', 'check_in', 'check_out', 'guest_count', 'email', 'whatsapp'];
+const fields = ['full_name', 'check_in', 'check_out', 'guest_count', 'email', 'whatsapp', 'confirmation_number'];
 const questions = [
   'Before I access your reservation, please tell me the full name on the booking. I will also ask for your stay dates, guest count and booking contact details, then verify a code sent to the booking email. You can reply CANCEL VERIFICATION at any time.',
   'What is your check-in date? Please use YYYY-MM-DD.',
@@ -13,14 +13,16 @@ const questions = [
   'How many guests are included in this reservation, including children? Please reply with the total number.',
   'What email address is recorded on the booking?',
   'What WhatsApp phone number is recorded on the booking? Include the country code, for example +31612345678.',
+  'What is the hotel confirmation number shown on your booking confirmation? If you do not have it, reply AGENT and our Front Office team will help.',
 ];
-const staffReply = 'I could not complete secure verification. Please contact the front desk to verify your reservation. I have not shared reservation details or added anything to your folio.';
+export const verificationHandoffReply = 'I could not locate and verify your reservation with the details provided. A member of our Front Office team will help you.';
+const staffReply = verificationHandoffReply;
 const codeReply = 'Please check the booking email for a six-digit verification code and enter it here within 10 minutes. Only enter a code for a request you started. If you cannot access that email, contact the front desk.';
 const busyReply = 'Verification is being processed. Please wait a moment. If no code arrives, contact the front desk; I will not send duplicate codes automatically.';
 const result = (replyText, extra = {}) => ({ replyText, status: 'verification', ...extra });
 
 export function requiresGuestVerification(text) {
-  return /\b(my|our)\s+(reservation|booking|bill|folio|room number|balance)\b|\b(late check[ -]?out|early check[ -]?in|extend (my |our |the )?stay|accept [a-f0-9]{12})\b/i.test(text);
+  return /\b(my|our)\s+(reservation|booking|bill|folio|room number|balance)\b|\b(late check[ -]?out|early check[ -]?in|extend (my |our |the )?stay|accept [a-f0-9]{12})\b|\b(find|look up|lookup|show|confirm|change|cancel)\b.{0,60}\b(reservation|booking)\b|\b(reservation|booking)\s+(details|status|number)\b|\bwho\b.{0,40}\b(staying|room|checked in)\b|\bguest\s+(details|email|phone|address)\b/i.test(text);
 }
 export function parseVerificationAnswer(step, text, data = {}) {
   const value = text.trim();
@@ -35,6 +37,7 @@ export function parseVerificationAnswer(step, text, data = {}) {
   }
   if (step === 3) return /^\d{1,3}$/.test(value) && +value >= 1 && +value <= 100 ? +value : null;
   if (step === 4) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value.toLowerCase() : null;
+  if (step === 6) return /^[a-zA-Z0-9][a-zA-Z0-9-]{0,79}$/.test(value) ? value.toUpperCase() : null;
   const phone = value.replace(/[\s().-]/g, '').replace(/^00/, '+');
   return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
 }
@@ -77,7 +80,7 @@ export function createGuestVerification({ db = prisma, client = createPmsMcpClie
     const message = await latest(ctx, text);
     let row = await db.pmsGuestVerification.findUnique({ where: { conversationId: ctx.conversationId } });
     if (row && row.hotelId !== ctx.hotelId) throw new Error('Verification hotel mismatch');
-    if (row && row.expiresAt > now() && !['verified', 'cancelled'].includes(row.status)) return result(row.lastReply);
+    if (row && row.expiresAt > now() && !['verified', 'cancelled'].includes(row.status)) return result(row.lastReply, { staffReview: row.status === 'blocked' });
     const data = { hotelId: ctx.hotelId, status: 'collecting', step: 0, attempts: 0, codeHash: null, codeExpiresAt: null,
       ...(row && row.expiresAt <= now() ? { sendCount: 0, emailHash: null } : {}),
       encryptedData: encrypt(JSON.stringify({ request: text })), lastMessageId: message.id, lastReply: questions[0], expiresAt: new Date(+now() + 3600000) };
@@ -99,7 +102,8 @@ export function createGuestVerification({ db = prisma, client = createPmsMcpClie
       await change(row, { status: 'cancelled', encryptedData: encrypt('{}'), codeHash: null }); return null;
     }
     const message = await latest(ctx, text);
-    if (row.lastMessageId === message.id) return result(row.lastReply);
+    if (row.lastMessageId === message.id) return result(row.lastReply, { staffReview: row.status === 'blocked' });
+    if (/^(agent|human|front desk|front office|i (do not|don't) have (it|the confirmation number))$/i.test(text.trim())) return block(row);
     if (/^cancel verification$/i.test(text.trim())) {
       await change(row, { status: 'cancelled', codeHash: null, encryptedData: encrypt('{}'), lastMessageId: message.id, lastReply: 'Verification cancelled. I can still answer general hotel questions.' });
       return result(row.lastReply);
@@ -114,6 +118,8 @@ export function createGuestVerification({ db = prisma, client = createPmsMcpClie
     if (['matching', 'sending', 'checking'].includes(row.status)) return result(busyReply);
     const data = JSON.parse(decrypt(row.encryptedData) || '{}');
     if (row.status === 'challenge') {
+      // A challenge issued by an older version must never bypass the new reference check.
+      if (!data.confirmation_number) return block(row);
       if (row.attempts >= 5 || !row.codeExpiresAt || row.codeExpiresAt <= now()) return block(row);
       const supplied = text.trim().replace(/^verify\s+/i, '');
       await change(row, { attempts: row.attempts + 1, lastMessageId: message.id, lastReply: 'That code could not be verified. Please enter the six-digit code from the booking email.' });

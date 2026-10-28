@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { createGuestVerification } from '../modules/pms/guestVerification.js';
+import { saveVerificationHandoff } from '../modules/pms/verificationHandoff.js';
 
 test('Neon verification state, rate budget, single-use code and expiring binding', { skip: process.env.VERIFICATION_DATABASE_TESTS !== 'true' }, async () => {
   assert.match(new URL(process.env.DATABASE_URL).searchParams.get('schema') || '', /^verification_test_[a-f0-9]{16}$/);
@@ -19,7 +20,7 @@ test('Neon verification state, rate budget, single-use code and expiring binding
       return start ? service.ensure(ctx, text) : service.handle(ctx, text);
     }
     await input('Can I have late checkout?', true);
-    for (const value of ['Test Guest', '2026-10-27', '2026-10-28', '2', 'test@example.com', '+31612345678']) await input(value);
+    for (const value of ['Test Guest', '2026-10-27', '2026-10-28', '2', 'test@example.com', '+31612345678', 'HOTEL-12345']) await input(value);
     assert.equal(sent.length, 1);
     let session = await db.pmsGuestVerification.findUnique({ where: { conversationId: ctx.conversationId } });
     assert.equal(session.status, 'challenge'); assert.equal(session.sendCount, 1);
@@ -36,5 +37,11 @@ test('Neon verification state, rate budget, single-use code and expiring binding
     await db.pmsConversationBinding.update({ where: { conversationId: ctx.conversationId }, data: { expiresAt: new Date(Date.now() - 1000) } });
     assert.equal(await service.validBinding(ctx), null);
     await assert.rejects(service.ensure({ ...ctx, hotelId: 'other' }, 'Can I have late checkout?'), /mismatch/);
+    await saveVerificationHandoff(db, { ...ctx, raisedAt: '10:02' });
+    const conversation = await db.conversation.findUnique({ where: { id: ctx.conversationId } });
+    assert.equal(conversation.aiStatus, 'escalated');
+    assert.equal(JSON.parse(conversation.escalation).department, 'Front Office');
+    assert.equal(await db.task.count(), 0);
+    await assert.rejects(saveVerificationHandoff(db, { ...ctx, hotelId: 'other', raisedAt: '10:02' }), /mismatch/);
   } finally { await db.$disconnect(); }
 });

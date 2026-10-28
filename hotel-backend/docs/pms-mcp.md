@@ -93,7 +93,10 @@ or linked to a site on this machine. No live Mews folio write has been performed
 
 Before reservation-specific reads or an upsell quote/write, the backend collects
 the full booking name, check-in date, check-out date, total guests, booking email
-and WhatsApp number. The private `match_guest_for_verification` MCP tool matches
+and WhatsApp number, followed by the hotel's booking confirmation number. The
+reference must exactly match Mews `Reservation.Number` (case-insensitive); an OTA
+reference alone is not substituted for the hotel's confirmation number. The
+private `match_guest_for_verification` MCP tool matches
 all fields against one current Mews reservation within the hotel's verified
 services and hotel-local dates. No match, ambiguous bookings, incomplete results
 or mismatches require front-desk assistance; partial guest details are not exposed.
@@ -121,9 +124,27 @@ PMS/mailbox). The sibling MCP tests validate exact matching and expiring binding
 Live verification still requires complete Mews credentials and the reservation's
 actual contact fields, plus a working connected hotel mailbox.
 
+Failed/missing matches and failed identity checks use the same generic guest
+message: “I could not locate and verify your reservation with the details
+provided. A member of our Front Office team will help you.” No partial matches,
+candidate records, room numbers or stored contact details are returned. Replying
+`AGENT` also enters this path. The backend saves an ordinary conversation
+escalation for Front Office (`kind: reservation_verification`), sends the handoff
+acknowledgment subject to the existing auto-reply policy, and pauses automation.
+It creates no separate operational task or manager dashboard error panel. These
+handoffs remain available in the Front Office queue and conversation inbox.
+Existing pre-confirmation code challenges cannot bypass the reference check.
+General hotel replies no longer inherit an unverified PMS guest name or room.
+
 Deployment on 2026-10-28: MCP revision `hotelogx-pms-mcp-00004-svt` and backend
 revision `hotelogx-connect-backend-00051-4l9` serve guest verification. Hosted
 initialization lists 15 tools, including the private matcher. Anonymous access and
 unknown hotels remain rejected. The verification migration is applied; 27 Python
 tests and the disposable Neon verification/expired-binding checks passed. This
 does not certify a live guest verification or folio posting against Mews.
+
+Confirmation-number / Front Office handoff update on 2026-10-28: backend
+`hotelogx-connect-backend-00052-z5b` was deployed first, followed by MCP
+`hotelogx-pms-mcp-00005-l44`. Validation: 76 targeted backend tests, 29 MCP tests,
+the isolated Neon verification/escalation check, and frontend type/build checks.
+The dashboard adjustment is in source and awaits the frontend GitHub/Netlify push.

@@ -102,6 +102,15 @@ test('human takeover prevents automatic replies', async () => {
   const f = webhookFixture(); f.db.conversation.upsert = async () => ({ aiStatus: 'human-takeover' });
   await f.service.accept(f.payload); assert.equal(f.counts().sends, 0); assert.equal(f.counts().automations, 0);
 });
+
+test('Front Office handoff sends its acknowledgment once, then pauses subsequent guest automation', async () => {
+  const f = webhookFixture(); let state = 'ai-handling', calls = 0;
+  f.db.conversation.upsert = async () => ({ aiStatus: state });
+  f.db.conversation.update = async ({ data }) => { if (data.aiStatus) state = data.aiStatus; };
+  f.service.automate = async () => { calls++; return { aiStatus: 'escalated', replyText: 'A member of our Front Office team will help you.', requiresApproval: false }; };
+  await f.service.accept(f.payload); await f.service.accept(f.payload);
+  assert.equal(state, 'escalated'); assert.equal(calls, 1); assert.equal(f.counts().sends, 1);
+});
 test('known rejected send retries without rerunning AI or duplicating inbound messages', async () => {
   const f = webhookFixture({ success: false, uncertain: false, error: 'Rejected' });
   await assert.rejects(f.service.accept(f.payload), /retry/);

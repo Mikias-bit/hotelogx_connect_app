@@ -2,7 +2,7 @@
 
 Hotelogx Python determines the daily work. Its existing authenticated report ingest writes immutable snapshots into the shared Neon database, scoped by the source credential to one Connect hotel. Connect projects those rows into operational records; it does not ask a language model to invent tasks, balances, benefits or completion state.
 
-The dashboard uses `/api/operations` and the ordinary tasks feed. It shows housekeeping assignments, VIP preparation and departure-balance follow-ups. Source date, missing runs, stale snapshots and failed runs stay visible. Raw report pages remain available as audit history, but are no longer primary dashboard panels or navigation items. Engine connection settings are under Manager settings.
+The dashboards use `/api/operations` and the ordinary tasks feed. Housekeeping assignment controls and worker settings are on the housekeeping manager's dashboard. Manager and Front Office retain their original dashboard layout: VIP and departure-balance count tiles sit alongside the existing arrival/departure counters, opening details only when clicked. No expanded housekeeping/report sections appear there. Missing or stale data displays an unavailable count rather than a false zero; source dates and update problems are explained inside the detail view. Raw report pages remain available as audit history, but are no longer primary dashboard panels or navigation items. Engine connection settings are under Manager settings.
 
 ## Source and execution state
 

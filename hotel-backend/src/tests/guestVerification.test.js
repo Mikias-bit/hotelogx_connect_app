@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createGuestVerification, parseVerificationAnswer, requiresGuestVerification } from '../modules/pms/guestVerification.js';
+import { createGuestVerification, parseVerificationAnswer, requiresGuestVerification, verificationHandoffReply } from '../modules/pms/guestVerification.js';
+import { saveVerificationHandoff } from '../modules/pms/verificationHandoff.js';
 import { runPmsAiTools } from '../modules/pms/pmsAiTools.js';
 
 function fixture() {
@@ -35,7 +36,7 @@ function fixture() {
   async function input(text, start = false) { message = { id: `m-${++sequence}`, body: text }; return start ? service.ensure(ctx, text) : service.handle(ctx, text); }
   async function collect() {
     await input('Can I have late checkout?', true);
-    for (const text of ['Jane Doe', '2026-10-26', '2026-10-28', '2', 'JANE@example.com', '+31612345678']) await input(text);
+    for (const text of ['Jane Doe', '2026-10-26', '2026-10-28', '2', 'JANE@example.com', '+31612345678', 'HOTEL-12345']) await input(text);
   }
   return { service, ctx, input, collect, sent, matches, row: () => row, binding: () => binding, changeMatch: value => { matched = value; }, failSend: () => { failSend = true; }, advance: ms => { clock = new Date(+clock + ms); } };
 }
@@ -45,7 +46,7 @@ test('collects all requested details, verifies email ownership, rechecks PMS and
   assert.equal(f.sent.length, 1); assert.equal(f.sent[0].toEmail, 'jane@example.com');
   assert.equal(f.sent[0].conversationId, undefined); assert.equal(f.binding(), undefined);
   assert.equal(f.row().status, 'challenge'); assert(!f.row().encryptedData.includes('Jane')); assert(!f.row().codeHash.includes('123456'));
-  assert.deepEqual(f.matches[0].args, { full_name: 'Jane Doe', check_in: '2026-10-26', check_out: '2026-10-28', guest_count: 2, email: 'jane@example.com', whatsapp: '+31612345678' });
+  assert.deepEqual(f.matches[0].args, { full_name: 'Jane Doe', check_in: '2026-10-26', check_out: '2026-10-28', guest_count: 2, email: 'jane@example.com', whatsapp: '+31612345678', confirmation_number: 'HOTEL-12345' });
   const verified = await f.input('123456');
   assert.equal(verified.verified, true); assert.equal(verified.resumeRequest, 'Can I have late checkout?');
   assert.equal(f.matches.length, 2); assert.equal(f.binding().reservationId, 'reservation-a');
@@ -66,7 +67,7 @@ test('incorrect, expired, changed-booking and foreign-hotel verification never c
 });
 test('replayed messages and uncertain email sends never send duplicate codes', async () => {
   const f = fixture(); await f.collect();
-  await f.service.handle(f.ctx, '+31612345678'); assert.equal(f.sent.length, 1);
+  await f.service.handle(f.ctx, 'HOTEL-12345'); assert.equal(f.sent.length, 1);
   const g = fixture(); g.failSend(); await g.collect();
   await g.input('123456'); assert.equal(g.sent.length, 1); assert.equal(g.binding(), undefined);
 });
@@ -90,4 +91,37 @@ test('OpenAI cannot bypass verification by requesting a quote tool', async () =>
     request: async () => ({ ok: true, json: async () => ({ choices: [{ message: { role: 'assistant', tool_calls: [{ id: 'a', function: { name: 'quote_upsell', arguments: JSON.stringify({ product_id: 'p', quantity: 2, consumption_utc: '2026-10-28T08:00:00Z' }) } }] } }] }) }),
   });
   assert.equal(response.status, 'verification'); assert.equal(writes, 0);
+});
+
+test('failed matching and missing confirmation use the same private Front Office handoff', async () => {
+  const missing = fixture(); missing.changeMatch(false); await missing.collect();
+  assert.equal(missing.row().lastReply, verificationHandoffReply);
+  assert.equal(missing.sent.length, 0); assert.equal(missing.binding(), undefined);
+  assert.equal((await missing.service.handle(missing.ctx, 'HOTEL-12345')).staffReview, true);
+  const noReference = fixture(); await noReference.input('my reservation', true);
+  const result = await noReference.input('AGENT');
+  assert.equal(result.replyText, verificationHandoffReply); assert.equal(result.staffReview, true);
+  assert.equal(noReference.matches.length, 0); assert.equal(noReference.binding(), undefined);
+  assert.equal(parseVerificationAnswer(6, 'hotel-12345'), 'HOTEL-12345');
+  assert.equal(parseVerificationAnswer(6, 'show all reservations'), null);
+});
+
+test('confirmation matching does not bypass email ownership; old challenges cannot bypass the new field', async () => {
+  const f = fixture(); await f.collect();
+  assert.equal(f.matches[0].args.confirmation_number, 'HOTEL-12345'); assert.equal(f.binding(), undefined);
+  const stored = JSON.parse(Buffer.from(f.row().encryptedData.slice(10), 'base64').toString()); delete stored.confirmation_number;
+  f.row().encryptedData = `encrypted:${Buffer.from(JSON.stringify(stored)).toString('base64')}`;
+  assert.equal((await f.input('123456')).staffReview, true); assert.equal(f.binding(), undefined);
+});
+
+test('handoff persists an ordinary tenant-scoped Front Office escalation without creating tasks', async () => {
+  let update;
+  const db = { conversation: { updateMany: async args => { update = args; return { count: 1 }; } } };
+  const escalation = await saveVerificationHandoff(db, { hotelId: 'hotel-a', conversationId: 'conv-a', raisedAt: '10:00' });
+  assert.deepEqual(update.where, { id: 'conv-a', guest: { hotelId: 'hotel-a' } });
+  assert.equal(update.data.aiStatus, 'escalated'); assert.equal(escalation.department, 'Front Office');
+  assert.equal(escalation.kind, 'reservation_verification'); assert.equal(escalation.urgency, 'Normal');
+  assert(!JSON.stringify(escalation).includes('customer_id'));
+  db.conversation.updateMany = async () => ({ count: 0 });
+  await assert.rejects(saveVerificationHandoff(db, { hotelId: 'other', conversationId: 'conv-a' }), /mismatch/);
 });

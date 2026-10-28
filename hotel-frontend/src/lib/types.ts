@@ -91,6 +91,8 @@ export interface Message {
 }
 
 export interface Escalation {
+  kind?: string;
+  department?: string;
   reason: string;
   urgency: Priority;
   suggested: string;

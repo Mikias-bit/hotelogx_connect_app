@@ -1,10 +1,11 @@
-import { OperationsBoard } from '@/components/OperationsBoard';
+import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
   BedDouble,
   ClipboardList,
+  Crown,
   LogIn,
   LogOut,
   MessageSquare,
@@ -33,8 +34,9 @@ export const Route = createFileRoute("/manager/")({
 function ManagerDashboard() {
   const user = useCurrentUser();
   const operations = useOperations();
+  const [detail, setDetail] = useState<'vip' | 'departure_bills' | null>(null);
   const navigate = useNavigate();
-  const escalations = useApp(selectors.escalations);
+  const escalations = useApp(selectors.escalations).filter(c => c.escalation?.kind !== 'reservation_verification');
   const openTasks = useApp(selectors.openTasks);
   const openIssues = useApp(selectors.openIssues);
   const guestRequests = useApp(selectors.guestRequests);
@@ -78,11 +80,14 @@ function ManagerDashboard() {
   const occupancyRate = rooms.length ? Math.round((inHouseCount / rooms.length) * 100) : 0;
   const vipSource = operations.data?.sources.find(s => s.kind === 'vip');
   const vipArrivalsCount = vipSource?.status === 'complete' && !vipSource.stale ? operations.data?.vips.length ?? 0 : 0;
+  const balanceSource = operations.data?.sources.find(s => s.kind === 'departure_bills');
+  const balanceCount = operations.data?.tasks.filter(t => t.department === 'Billing' && t.status !== 'Completed').length ?? 0;
+  const vipReady = vipSource?.status === 'complete' && !vipSource.stale && !vipSource.latestRunFailed && !operations.error;
+  const balancesReady = balanceSource?.status === 'complete' && !balanceSource.stale && !balanceSource.latestRunFailed && !operations.error;
   const earlyCheckInsCount = rooms.filter((r) => r.earlyCheckIn).length;
   const totalMessages = conversations.reduce((acc, c) => acc + (c.messages?.length || 0), 0);
 
   const briefLines: BriefLine[] = [
-    ...(operations.data?.briefing || []).map(text => ({ text, tone: 'ai' as const })),
     {
       text: `${arrivalsCount} arrivals and ${departuresCount} departures. ${vipArrivalsCount} VIP preparations, ${earlyCheckInsCount} early check-ins already agreed.`,
       tone: "ai",
@@ -115,7 +120,7 @@ function ManagerDashboard() {
       who: "You",
     })),
     ...tasks
-      .filter((t) => t.status !== "Completed" && (t.priority === "Urgent" || t.priority === "High"))
+      .filter((t) => t.source !== "Daily report" && t.status !== "Completed" && (t.priority === "Urgent" || t.priority === "High"))
       .slice(0, 3)
       .map((t) => ({
         text: `${t.title}${t.room ? " (" + t.room + ")" : ""}`,
@@ -164,7 +169,6 @@ function ManagerDashboard() {
 
   return (
     <AppShell title="Morning operational briefing">
-      <OperationsBoard operations={operations} />
       <div className="space-y-6">
         <div>
           <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
@@ -180,6 +184,8 @@ function ManagerDashboard() {
           <StatCard label="Arrivals" value={arrivalsCount} hint={`${vipArrivalsCount} VIP`} icon={LogIn} tone="pine" delay={0} />
           <StatCard label="Departures" value={departuresCount} hint={`${earlyCheckInsCount} early checkouts`} icon={LogOut} tone="mute" delay={40} />
           <StatCard label="In-house" value={inHouseCount} hint={`${occupancyRate}% occupancy`} icon={Users} tone="pine" delay={80} />
+          <StatCard label="VIPs" value={vipReady ? vipArrivalsCount : '—'} hint="View VIP guests" icon={Crown} tone="pine" delay={100} onClick={() => setDetail('vip')} />
+          <StatCard label="Departure balances" value={balancesReady ? balanceCount : '—'} hint="Problems to review" icon={TriangleAlert} tone="attend" delay={110} emphasis={balancesReady && balanceCount > 0} onClick={() => setDetail('departure_bills')} />
           <StatCard label="Guest requests" value={guestRequests.length} hint="open right now" icon={MessageSquare} tone="ai" delay={120} />
           <StatCard
             label="Escalations"
@@ -352,6 +358,7 @@ function ManagerDashboard() {
           </Card>
         </section>
       </div>
+      {detail && <OperationalDetails kind={detail} operations={operations} onClose={() => setDetail(null)} />}
     </AppShell>
   );
 }

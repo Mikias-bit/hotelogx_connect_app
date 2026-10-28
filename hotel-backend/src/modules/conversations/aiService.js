@@ -1,3 +1,5 @@
+import { saveVerificationHandoff } from '../pms/verificationHandoff.js';
+import { verificationHandoffReply } from '../pms/guestVerification.js';
 import crypto from 'node:crypto';
 import { prisma } from '../../config/database.js';
 import { pmsService } from '../pms/pmsService.js';
@@ -525,17 +527,22 @@ export async function processGuestMessageAI({
   if (!conversation) return null;
 
   const guest = conversation.guest;
-  const guestName = guest?.name || 'Guest';
+  let guestName = 'Guest';
   const effectiveHotelId = hotelId || guest?.hotelId;
   if (!effectiveHotelId || (hotelId && guest?.hotelId !== hotelId)) throw new Error('Conversation hotel mismatch');
-  const room = extractRoomNumber(messageText, conversation, guest) || '208';
+  // Unverified conversations must not inherit a PMS guest name/room as AI context.
+  let room = extractRoomNumber(messageText, null, null) || 'not provided';
   const timeStr = getClockTime();
 
   if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY) {
     const verificationContext = { hotelId: effectiveHotelId, conversationId };
+    if (await guestVerification.validBinding(verificationContext)) {
+      guestName = guest?.name || 'Guest';
+      room = extractRoomNumber(messageText, conversation, guest) || 'not provided';
+    }
     let verificationResult;
     try { verificationResult = await guestVerification.handle(verificationContext, messageText); }
-    catch { verificationResult = { status: 'verification', replyText: 'I could not securely verify this request. Please contact the front desk before accessing a reservation or adding anything to its folio.' }; }
+    catch { verificationResult = { status: 'verification', replyText: verificationHandoffReply, staffReview: true }; }
     const effectiveMessage = verificationResult?.resumeRequest || messageText;
     const since = await guestVerification.historySince(verificationContext);
     const history = verificationResult?.resumeRequest ? [] : await database.message.findMany({ where: { conversationId, ...(since ? { createdAt: { gt: since } } : {}) }, orderBy: { createdAt: 'desc' }, take: 8 });
@@ -543,6 +550,7 @@ export async function processGuestMessageAI({
     const result = verificationResult && !verificationResult.resumeRequest ? verificationResult : await runPmsAiTools({ hotelId: effectiveHotelId, conversationId, messageText: effectiveMessage,
       history: history.reverse(), knowledge: knowledge.contextText || '', verification: guestVerification });
     if (result) {
+      if (result.staffReview) await saveVerificationHandoff(database, { hotelId: effectiveHotelId, conversationId, raisedAt: timeStr });
       const hotel = await database.hotel.findUnique({ where: { id: effectiveHotelId } });
       const config = await database.aiConfig.findUnique({ where: { hotelId: effectiveHotelId } });
       const policy = result.status === 'verification' ? { requiresApproval: false } : await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText: effectiveMessage, guest, database, strict: deferEmailDelivery });
@@ -553,7 +561,9 @@ export async function processGuestMessageAI({
       } });
       if (!requiresApproval && !deferEmailDelivery) dispatchOutboundEmail({ channel, conversation, guest,
         hotelId: effectiveHotelId, conversationId, text: result.replyText });
-      return { handled: true, requiresApproval, aiStatus: requiresApproval || result.staffReview ? 'human-takeover' : 'ai-handling',
+      // The handoff is already saved above. Do not set result.escalation here:
+      // provider processors interpret that field as suppressing the guest acknowledgment.
+      return { handled: true, requiresApproval, aiStatus: result.staffReview ? 'escalated' : requiresApproval ? 'human-takeover' : 'ai-handling',
         type: 'pms_tool', message, replyText: result.replyText, suggestedReply: result.replyText,
         knowledgeUsed: knowledge.docNames || [], upsellIdeas: [] };
     }
@@ -917,7 +927,7 @@ Write a polite, warm 2-3 sentence response confirming availability, mentioning s
     intentType: rag.docNames.length > 0 ? 'knowledge_rag' : 'general',
   });
 
-  const ragPrompt = `A hotel guest (${guestName}, Room ${room}) asked: "${messageText}".
+  const ragPrompt = `A hotel guest asked: "${messageText}".
 ${rag.contextText ? `\nVerified Hotel Information & Stored Policies:\n${rag.contextText}\n` : ''}
 Write a polite, accurate, concise 1-3 sentence response directly answering their question based on the verified hotel policies above.
 - If asking about check-in, check-out, breakfast, parking, wifi, cancellation, or pets, state the exact hours/details from the policies.

@@ -1,4 +1,5 @@
-import { OperationsBoard } from '@/components/OperationsBoard';
+import { useState } from 'react';
+import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
 import { PmsUpsells } from '@/components/PmsUpsells';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/front-office/")({
 function FrontOfficeDashboard() {
   const user = useCurrentUser();
   const operations = useOperations();
+  const [detail, setDetail] = useState<'vip' | 'departure_bills' | null>(null);
   const navigate = useNavigate();
   const escalations = useApp(selectors.escalations);
   const tasks = useApp((s) => s.tasks);
@@ -38,7 +40,7 @@ function FrontOfficeDashboard() {
   const guestRequests = useApp(selectors.guestRequests);
 
   const myTasks = tasks
-    .filter((t) => t.status !== "Completed" && (t.department === "Front Office" || t.department === "VIP" || t.department === "Billing"))
+    .filter((t) => t.source !== "Daily report" && t.status !== "Completed" && (t.department === "Front Office" || t.department === "VIP" || t.department === "Billing"))
     .slice(0, 6);
   const readyRooms = rooms.filter((r) => r.status === "Clean" || r.status === "Inspected");
   const arrivalsWaiting = rooms.filter((r) => r.arrivalTime && r.status !== "Clean" && r.status !== "Inspected");
@@ -48,11 +50,14 @@ function FrontOfficeDashboard() {
   const departuresCount = rooms.filter((r) => r.guestStatus === "Departed" || r.guestStatus === "Departing").length;
   const vipSource = operations.data?.sources.find(s => s.kind === 'vip');
   const vipArrivalsCount = vipSource?.status === 'complete' && !vipSource.stale ? operations.data?.vips.length ?? 0 : 0;
+  const balanceSource = operations.data?.sources.find(s => s.kind === 'departure_bills');
+  const balanceCount = operations.data?.tasks.filter(t => t.department === 'Billing' && t.status !== 'Completed').length ?? 0;
+  const vipReady = vipSource?.status === 'complete' && !vipSource.stale && !vipSource.latestRunFailed && !operations.error;
+  const balancesReady = balanceSource?.status === 'complete' && !balanceSource.stale && !balanceSource.latestRunFailed && !operations.error;
   const earlyCheckInsCount = rooms.filter((r) => r.earlyCheckIn).length;
   const totalMessages = conversations.reduce((acc, c) => acc + (c.messages?.length || 0), 0);
 
   const lines: BriefLine[] = [
-    ...(operations.data?.briefing || []).map(text => ({ text, tone: 'ai' as const })),
     {
       text: `${arrivalsCount} arrivals scheduled today. ${readyRooms.length} rooms are released and ${arrivalsWaiting.length} arrivals are currently waiting on housekeeping.`,
       tone: arrivalsWaiting.length > 0 ? "attend" : "good",
@@ -78,7 +83,6 @@ function FrontOfficeDashboard() {
 
   return (
     <AppShell title="Front office — your shift, prepared">
-      <OperationsBoard operations={operations} />
       <PmsUpsells />
       <div className="space-y-6">
         <div>
@@ -96,7 +100,8 @@ function FrontOfficeDashboard() {
           <StatCard label="Departures" value={departuresCount} hint="late checkouts monitored" icon={LogOut} tone="mute" delay={40} />
           <StatCard label="Rooms ready" value={`${readyRooms.length}/${rooms.length}`} hint={`${arrivalsWaiting.length} arrivals waiting`} icon={BedDouble} tone="attend" delay={80} />
           <StatCard label="Open requests" value={guestRequests.length} hint="in-house guests" icon={MessageSquare} tone="ai" delay={120} />
-          <StatCard label="VIP preparations" value={vipArrivalsCount} hint={`${vipArrivalsCount} preparations in snapshot`} icon={Crown} tone="pine" delay={160} />
+          <StatCard label="VIPs" value={vipReady ? vipArrivalsCount : '—'} hint="View VIP guests" icon={Crown} tone="pine" delay={160} onClick={() => setDetail('vip')} />
+          <StatCard label="Departure balances" value={balancesReady ? balanceCount : '—'} hint="Problems to review" icon={TriangleAlert} tone="attend" delay={180} emphasis={balancesReady && balanceCount > 0} onClick={() => setDetail('departure_bills')} />
           <StatCard
             label="Escalated"
             value={escalations.length}
@@ -193,6 +198,7 @@ function FrontOfficeDashboard() {
           </section>
         </div>
       </div>
+      {detail && <OperationalDetails kind={detail} operations={operations} onClose={() => setDetail(null)} />}
     </AppShell>
   );
 }
