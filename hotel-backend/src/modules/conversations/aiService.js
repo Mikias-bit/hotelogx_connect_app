@@ -1,4 +1,4 @@
-import { saveVerificationHandoff } from '../pms/verificationHandoff.js';
+import { savePmsHandoff } from '../pms/pmsHandoff.js';
 import { verificationHandoffReply } from '../pms/guestVerification.js';
 import crypto from 'node:crypto';
 import { prisma } from '../../config/database.js';
@@ -550,7 +550,7 @@ export async function processGuestMessageAI({
     const result = verificationResult && !verificationResult.resumeRequest ? verificationResult : await runPmsAiTools({ hotelId: effectiveHotelId, conversationId, messageText: effectiveMessage,
       history: history.reverse(), knowledge: knowledge.contextText || '', verification: guestVerification });
     if (result) {
-      if (result.staffReview) await saveVerificationHandoff(database, { hotelId: effectiveHotelId, conversationId, raisedAt: timeStr });
+      const handoff = await savePmsHandoff(database, { hotelId: effectiveHotelId, conversationId, raisedAt: timeStr }, result);
       const hotel = await database.hotel.findUnique({ where: { id: effectiveHotelId } });
       const config = await database.aiConfig.findUnique({ where: { hotelId: effectiveHotelId } });
       const policy = result.status === 'verification' ? { requiresApproval: false } : await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText: effectiveMessage, guest, database, strict: deferEmailDelivery });
@@ -563,7 +563,7 @@ export async function processGuestMessageAI({
         hotelId: effectiveHotelId, conversationId, text: result.replyText });
       // The handoff is already saved above. Do not set result.escalation here:
       // provider processors interpret that field as suppressing the guest acknowledgment.
-      return { handled: true, requiresApproval, aiStatus: result.staffReview ? 'escalated' : requiresApproval ? 'human-takeover' : 'ai-handling',
+      return { handled: true, requiresApproval, aiStatus: handoff ? 'escalated' : requiresApproval ? 'human-takeover' : 'ai-handling',
         type: 'pms_tool', message, replyText: result.replyText, suggestedReply: result.replyText,
         knowledgeUsed: knowledge.docNames || [], upsellIdeas: [] };
     }

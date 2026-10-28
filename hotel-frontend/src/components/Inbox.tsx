@@ -31,6 +31,7 @@ import type { AiStatus, Conversation, Sentiment } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Badge, Button, ChannelMark, Empty, Eyebrow, KeyValue, statusTone } from "./ui";
 import type { Tone } from "./ui";
+import { PmsUpsells } from "./PmsUpsells";
 import { TaskComposer } from "./TaskComposer";
 
 const filters = [
@@ -248,6 +249,12 @@ function GuestContext({
 
   return (
     <div className="space-y-5">
+      {(conversation.aiStatus === 'escalated' || conversation.aiStatus === 'human-takeover') && (
+        <details className="rounded-[10px] border border-line bg-paper/70 p-3" open={conversation.escalation?.kind === 'reservation_verification' || conversation.escalation?.kind === 'pms_approval' || conversation.escalation?.kind === 'pms_review'}>
+          <summary className="cursor-pointer text-[13px] font-medium">Reservation check &amp; approvals</summary>
+          <div className="mt-3"><PmsUpsells key={conversation.id} conversationId={conversation.id} /></div>
+        </details>
+      )}
       <div>
         <div className="flex items-center gap-2">
           <UserRound className="size-3.5 text-ink-4" />
@@ -480,11 +487,12 @@ function Composer({
 
 /* ----------------------------------------------------------------- inbox -- */
 
-export function Inbox({ variant, staffName }: { variant: "manager" | "front-office"; staffName: string }) {
+export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: "manager" | "front-office"; staffName: string; initialFilter?: Filter }) {
   const conversations = useApp((s) => s.conversations);
-  const [filter, setFilter] = useState<Filter>(variant === "manager" ? "All" : "All");
-  const [selectedId, setSelectedId] = useState<string | null>(variant === "front-office" ? conversations[0]?.id ?? null : null);
+  const [filter, setFilter] = useState<Filter>(initialFilter);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  useEffect(() => { setFilter(initialFilter); setSelectedId(null); }, [initialFilter]);
 
   useEffect(() => {
     api.getConversations().then((remoteConvs: any) => {
@@ -516,7 +524,7 @@ export function Inbox({ variant, staffName }: { variant: "manager" | "front-offi
     return result;
   }, [conversations]);
 
-  const selected = conversations.find((c) => c.id === selectedId) ?? null;
+  const selected = list.find((c) => c.id === selectedId) ?? null;
 
   const select = (id: string) => {
     setSelectedId(id);

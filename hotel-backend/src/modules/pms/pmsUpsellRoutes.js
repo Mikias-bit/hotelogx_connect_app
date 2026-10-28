@@ -16,11 +16,19 @@ export function createUpsellRouter({ db = prisma, client = createPmsMcpClient(),
     const row = await db.conversation.findFirst({ where: { id, guest: { hotelId: req.user.hotelId } } });
     requireValue(row, 'Conversation not found in this hotel'); return row;
   };
-  router.get('/', wrap(async req => ({
-    products: await db.pmsUpsellProduct.findMany({ where: { hotelId: req.user.hotelId } }),
-    offers: await db.pmsUpsellOffer.findMany({ where: { hotelId: req.user.hotelId }, orderBy: { createdAt: 'desc' }, take: 100 }),
-    bindings: await db.pmsConversationBinding.findMany({ where: { hotelId: req.user.hotelId } }),
-  })));
+  router.get('/', wrap(async req => {
+    const conversationId = req.query.conversationId;
+    if (conversationId !== undefined) {
+      requireValue(typeof conversationId === 'string' && conversationId.length > 0, 'Choose a conversation');
+      await conversation(req, conversationId);
+    }
+    const where = { hotelId: req.user.hotelId, ...(conversationId ? { conversationId } : {}) };
+    return {
+      products: conversationId ? [] : await db.pmsUpsellProduct.findMany({ where: { hotelId: req.user.hotelId } }),
+      offers: await db.pmsUpsellOffer.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }),
+      bindings: await db.pmsConversationBinding.findMany({ where }),
+    };
+  }));
   router.get('/products/search', wrap(async req => {
     requireValue(typeof req.query.q === 'string' && req.query.q.length > 0 && req.query.q.length <= 200, 'Enter a product search');
     return unpackMcp(await client.callTool(req.user, 'search_upsell_products', { query: req.query.q }));

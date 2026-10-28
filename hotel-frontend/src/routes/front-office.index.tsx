@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
-import { PmsUpsells } from '@/components/PmsUpsells';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -83,7 +82,6 @@ function FrontOfficeDashboard() {
 
   return (
     <AppShell title="Front office — your shift, prepared">
-      <PmsUpsells />
       <div className="space-y-6">
         <div>
           <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
@@ -110,7 +108,7 @@ function FrontOfficeDashboard() {
             tone="urgent"
             emphasis={escalations.length > 0}
             delay={200}
-            onClick={() => navigate({ to: "/front-office/conversations" })}
+            onClick={() => navigate({ to: "/front-office/conversations", search: { filter: "escalated" } })}
           />
         </div>
 

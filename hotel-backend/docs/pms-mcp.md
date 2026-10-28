@@ -48,7 +48,13 @@ customer, price or approval override. Other PMS staff tools are forbidden for
 the signed conversation role.
 
 Managers use **Manager → Upsells → Reservation extras and folio approvals**.
-Front office has the same approval/binding panel on its dashboard. Staff must
+Front Office opens **Escalated** on the dashboard, selects a conversation, and uses
+**Reservation check & approvals** in its details. The dashboard has no approval panel.
+Pending folio approvals and uncertain PMS outcomes join this ordinary escalation
+queue alongside reservation verification handoffs. Review loads only the selected
+hotel conversation's offers and bindings; staff resolve or return the conversation
+to AI after handling it. These routing changes require a backend deployment as well
+as the frontend deployment. Staff must
 verify guest identity and link the conversation to its Mews reservation UUID when
 automatic guest verification cannot complete.
 Do not infer ownership from a room number, name or message text.

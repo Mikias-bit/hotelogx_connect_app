@@ -3,6 +3,33 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { createUpsellRouter } from '../modules/pms/pmsUpsellRoutes.js';
 
+test('conversation review only loads offers and bindings from the selected hotel conversation', async () => {
+  const queries = [];
+  const db = {
+    conversation: { findFirst: async ({ where }) => {
+      assert.equal(where.guest.hotelId, 'hotel-a');
+      return where.id === 'conv-a' ? { id: 'conv-a' } : null;
+    } },
+    pmsUpsellOffer: { findMany: async ({ where }) => { queries.push(where); return []; } },
+    pmsConversationBinding: { findMany: async ({ where }) => { queries.push(where); return []; } },
+  };
+  const app = express();
+  app.use(createUpsellRouter({ db, client: {}, authenticateStaff: (req, res, next) => {
+    req.user = { id: 'staff-a', hotelId: 'hotel-a', role: 'front-office' }; next();
+  } }));
+  const server = app.listen(0); await new Promise(resolve => server.once('listening', resolve));
+  const url = `http://localhost:${server.address().port}`;
+  try {
+    assert.equal((await fetch(`${url}/?conversationId=other-hotel-conversation`)).status, 400);
+    assert.equal(queries.length, 0);
+    assert.equal((await fetch(`${url}/?conversationId=conv-a`)).status, 200);
+    assert.deepEqual(queries, [
+      { hotelId: 'hotel-a', conversationId: 'conv-a' },
+      { hotelId: 'hotel-a', conversationId: 'conv-a' },
+    ]);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
 test('staff approval is tenant-scoped, immutable, and never a raw arbitrary tool call', async () => {
   let actor = { id: 'staff-a', hotelId: 'hotel-a', role: 'front-office' };
   let found = true; const calls = [];

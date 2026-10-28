@@ -118,7 +118,7 @@ async function invitationRequest<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
-  getPmsUpsells: () => request<any>('/pms/upsells'),
+  getPmsUpsells: (conversationId?: string) => request<any>(`/pms/upsells${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
   searchPmsProducts: (q: string) => request<any>(`/pms/upsells/products/search?q=${encodeURIComponent(q)}`),
   bindPmsConversation: (id: string, reservationId: string) => request<any>(`/pms/upsells/bindings/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ reservationId, identityVerified: true }) }),
   savePmsProduct: (id: string, data: unknown) => request<any>(`/pms/upsells/products/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
