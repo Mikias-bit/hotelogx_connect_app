@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Send,
   Settings,
   Sparkles,
   TrendingUp,
@@ -42,6 +43,7 @@ const navByRole: Record<Role, NavItem[]> = {
   ],
   housekeeping: [
     { to: "/housekeeping", label: "Dashboard", icon: Gauge },
+    { to: "/housekeeping/assignments", label: "Assignments", icon: Send },
     { to: "/housekeeping/rooms", label: "Rooms", icon: BedDouble },
     { to: "/housekeeping/tasks", label: "Tasks", icon: ClipboardList },
   ],

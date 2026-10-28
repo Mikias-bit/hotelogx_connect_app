@@ -26,6 +26,7 @@ import { Route as MaintenanceIssuesRouteImport } from './routes/maintenance.issu
 import { Route as HousekeepingTasksRouteImport } from './routes/housekeeping.tasks'
 import { Route as HousekeepingRoomsRouteImport } from './routes/housekeeping.rooms'
 import { Route as HousekeepingReportsRouteImport } from './routes/housekeeping.reports'
+import { Route as HousekeepingAssignmentsRouteImport } from './routes/housekeeping.assignments'
 import { Route as FrontOfficeTasksRouteImport } from './routes/front-office.tasks'
 import { Route as FrontOfficeReportsRouteImport } from './routes/front-office.reports'
 import { Route as FrontOfficeConversationsRouteImport } from './routes/front-office.conversations'
@@ -115,6 +116,11 @@ const HousekeepingReportsRoute = HousekeepingReportsRouteImport.update({
   path: '/housekeeping/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HousekeepingAssignmentsRoute = HousekeepingAssignmentsRouteImport.update({
+  id: '/housekeeping/assignments',
+  path: '/housekeeping/assignments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FrontOfficeTasksRoute = FrontOfficeTasksRouteImport.update({
   id: '/front-office/tasks',
   path: '/front-office/tasks',
@@ -139,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
+  '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
+  '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
+  '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
@@ -208,6 +217,7 @@ export interface FileRouteTypes {
     | '/front-office/conversations'
     | '/front-office/reports'
     | '/front-office/tasks'
+    | '/housekeeping/assignments'
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/front-office/conversations'
     | '/front-office/reports'
     | '/front-office/tasks'
+    | '/housekeeping/assignments'
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
@@ -252,6 +263,7 @@ export interface FileRouteTypes {
     | '/front-office/conversations'
     | '/front-office/reports'
     | '/front-office/tasks'
+    | '/housekeeping/assignments'
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
@@ -275,6 +287,7 @@ export interface RootRouteChildren {
   FrontOfficeConversationsRoute: typeof FrontOfficeConversationsRoute
   FrontOfficeReportsRoute: typeof FrontOfficeReportsRoute
   FrontOfficeTasksRoute: typeof FrontOfficeTasksRoute
+  HousekeepingAssignmentsRoute: typeof HousekeepingAssignmentsRoute
   HousekeepingReportsRoute: typeof HousekeepingReportsRoute
   HousekeepingRoomsRoute: typeof HousekeepingRoomsRoute
   HousekeepingTasksRoute: typeof HousekeepingTasksRoute
@@ -412,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HousekeepingReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/housekeeping/assignments': {
+      id: '/housekeeping/assignments'
+      path: '/housekeeping/assignments'
+      fullPath: '/housekeeping/assignments'
+      preLoaderRoute: typeof HousekeepingAssignmentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/front-office/tasks': {
       id: '/front-office/tasks'
       path: '/front-office/tasks'
@@ -443,6 +463,7 @@ const rootRouteChildren: RootRouteChildren = {
   FrontOfficeConversationsRoute: FrontOfficeConversationsRoute,
   FrontOfficeReportsRoute: FrontOfficeReportsRoute,
   FrontOfficeTasksRoute: FrontOfficeTasksRoute,
+  HousekeepingAssignmentsRoute: HousekeepingAssignmentsRoute,
   HousekeepingReportsRoute: HousekeepingReportsRoute,
   HousekeepingRoomsRoute: HousekeepingRoomsRoute,
   HousekeepingTasksRoute: HousekeepingTasksRoute,
