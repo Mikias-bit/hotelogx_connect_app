@@ -37,6 +37,7 @@ export type Department =
 export type TaskStatus = "Accepted" | "New" | "Assigned" | "In Progress" | "Waiting" | "Completed" | "Escalated";
 export type Priority = "Urgent" | "High" | "Normal" | "Low";
 export type TaskSource =
+  | "Operational change"
   | "Daily report"
   | "Guest WhatsApp"
   | "Guest Email"
@@ -151,6 +152,15 @@ export interface Conversation {
 }
 
 export interface Task {
+  location?: string;
+  planVersion?: number;
+  planData?: Record<string, string>;
+  pendingSourceData?: Record<string, string>;
+  sourceReviewRequired?: boolean;
+  sourcePresent?: boolean;
+  notBefore?: string;
+  dueAt?: string;
+  planNotification?: { status: string; error?: string };
   reportContentHash?: string;
   reportDate?: string;
   stale?: boolean;

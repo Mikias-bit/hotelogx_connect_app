@@ -1,3 +1,4 @@
+import { HousekeepingPlanButton } from '@/components/HousekeepingPlan';
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ClipboardList, Plus } from "lucide-react";
@@ -58,6 +59,7 @@ function ManagerTasks() {
               Most of these were created by the AI from a guest message. Department updates arrive back from WhatsApp.
             </p>
           </div>
+          <HousekeepingPlanButton />
           <Button icon={Plus} onClick={() => setComposer(true)}>
             New task
           </Button>

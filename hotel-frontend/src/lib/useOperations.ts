@@ -4,7 +4,7 @@ import { useCurrentUser } from './session';
 import type { Task } from './types';
 export interface Worker { id: string; name: string; phone: string; active: boolean; whatsappEnabled: boolean; language: string }
 export interface OperationalData {
-  today: string; tasks: Task[]; workers: Worker[];
+  today: string; timezone: string; tasks: Task[]; workers: Worker[];
   sources: { kind: string; reportDate: string | null; status: string; stale?: boolean; latestRunFailed?: boolean }[];
   vips: { itemKey: string; taskId: string; guest: string; confirmation: string; room: string; type: string; benefits: string; additionalGuests: string }[];
   housekeeping: { roomCount: number; completed: number; inProgress: number; unassigned: number; unaccepted: number; problems: number; averageMinutes: number | null; completedRooms: string[]; noCleaningRooms: string[] };

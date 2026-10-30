@@ -249,6 +249,7 @@ export const api = {
   // Manager & Health
   getDailyReports: (date?: string) => request<any>(`/reports${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   getOperations: () => request<any>('/operations'),
+  changeHousekeepingPlan: (id: string | undefined, data: unknown) => request<{ deliveryStatus: string; lastError?: string }>(`/operations/housekeeping/changes${id ? '/' + encodeURIComponent(id) : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) }),
   updateOperation: (id: string, data: any) => request<any>(`/operations/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   assignOperations: (data: any) => request<any>('/operations/assignments', { method: 'POST', body: JSON.stringify(data) }),
   getOperationalAssignments: () => request<any[]>('/operations/assignments'),

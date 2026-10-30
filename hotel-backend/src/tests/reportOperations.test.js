@@ -5,6 +5,22 @@ import { operationsRouter } from '../modules/reports/operationsRoutes.js';
 import { createHousekeepingOperations } from '../modules/reports/housekeepingOperations.js';
 import { WhatsAppMessagingService } from '../modules/whatsapp/WhatsAppMessagingService.js';
 import { encryptToken } from '../utils/tokenCrypto.js';
+import { hotelTime, planToken } from '../modules/reports/housekeepingPlan.js';
+import { saveHousekeepingChange } from '../modules/reports/housekeepingChanges.js';
+
+test('plan access times use hotel timezone and reject DST gaps and ambiguity', () => {
+  assert.equal(hotelTime('2026-10-30', '14:00', 'Europe/Amsterdam').toISOString(), '2026-10-30T13:00:00.000Z');
+  assert.equal(hotelTime('2026-07-30', '14:00', 'Europe/Amsterdam').toISOString(), '2026-07-30T12:00:00.000Z');
+  assert.throws(() => hotelTime('2026-03-29', '02:30', 'Europe/Amsterdam'), /clock change/);
+  assert.throws(() => hotelTime('2026-10-25', '02:30', 'Europe/Amsterdam'), /clock change/);
+  assert.throws(() => hotelTime('2026-10-30', '25:00', 'Europe/Amsterdam'), /valid hotel-local/);
+  assert.equal(hotelTime('2026-10-30', '', 'Europe/Amsterdam'), null);
+  assert.notEqual(planToken({ contentHash: 'source', planVersion: 1 }), planToken({ contentHash: 'source', planVersion: 2 }));
+});
+
+test('plan changes deny unauthorized roles before database access', async () => {
+  for (const role of ['maintenance', 'guest', 'unknown']) await assert.rejects(saveHousekeepingChange({}, { role }, null, {}), { status: 403 });
+});
 
 test('operational button IDs authenticate worker, hotel and expiry', () => {
   let time = new Date('2026-10-28T10:00:00Z');

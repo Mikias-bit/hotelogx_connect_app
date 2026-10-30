@@ -1,3 +1,4 @@
+import { HousekeepingPlanButton } from '@/components/HousekeepingPlan';
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, ClipboardList, MessageCircle, Plus } from "lucide-react";
@@ -51,6 +52,7 @@ function FrontOfficeTasks() {
               lands here and the guest is told automatically.
             </p>
           </div>
+          <HousekeepingPlanButton />
           <Button icon={Plus} onClick={() => setComposer(true)}>
             New task
           </Button>

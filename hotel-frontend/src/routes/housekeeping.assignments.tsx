@@ -10,7 +10,7 @@ export const Route = createFileRoute('/housekeeping/assignments')({
 });
 
 function HousekeepingAssignments() {
-  const requests = useApp(s => s.tasks).filter(t => t.department === 'Housekeeping' && t.source !== 'Daily report' && t.status !== 'Completed');
+  const requests = useApp(s => s.tasks).filter(t => t.department === 'Housekeeping' && !['Daily report', 'Operational change'].includes(t.source) && t.status !== 'Completed');
   return (
     <AppShell title="Housekeeping assignments">
       <OperationsBoard />

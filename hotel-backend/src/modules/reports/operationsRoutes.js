@@ -16,6 +16,8 @@ export function operationsRouter({ db = prisma, auth = authenticate, service = h
   };
   const manager = user => { if (!['manager', 'housekeeping'].includes(user.role)) failOperation('Housekeeping manager access required', 403); };
   router.get('/', run(req => readOperations(db, req.user)));
+  router.post('/housekeeping/changes', run(req => service.change(req.user, null, req.body)));
+  router.patch('/housekeeping/changes/:id', run(req => service.change(req.user, req.params.id, req.body)));
   router.patch('/tasks/:id', run(async req => {
     const task = await updateReportTask(db, req.user, req.params.id, req.body);
     broadcast(req.user.hotelId, 'reports:updated', { refresh: true }); return task;
@@ -41,9 +43,9 @@ export function operationsRouter({ db = prisma, auth = authenticate, service = h
   router.patch('/workers/:id', run(saveWorker));
   router.get('/config', run(async req => { manager(req.user); return await db.housekeepingConfig.findUnique({ where: { hotelId: req.user.hotelId } }) || { templateName: '', templateLanguage: 'en_US' }; }));
   router.put('/config', run(async req => {
-    manager(req.user); const { templateName = '', templateLanguage = 'en_US' } = req.body;
-    if (!/^[a-z0-9_]{0,512}$/.test(templateName) || !/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(templateLanguage)) failOperation('Enter a valid approved Meta template name and language');
-    const data = { templateName: templateName || null, templateLanguage };
+    manager(req.user); const { templateName = '', changeTemplateName = '', templateLanguage = 'en_US' } = req.body;
+    if (!/^[a-z0-9_]{0,512}$/.test(templateName) || !/^[a-z0-9_]{0,512}$/.test(changeTemplateName) || !/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(templateLanguage)) failOperation('Enter a valid approved Meta template name and language');
+    const data = { templateName: templateName || null, changeTemplateName: changeTemplateName || null, templateLanguage };
     return db.housekeepingConfig.upsert({ where: { hotelId: req.user.hotelId }, create: { hotelId: req.user.hotelId, ...data }, update: data });
   }));
   return router;

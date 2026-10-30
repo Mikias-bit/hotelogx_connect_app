@@ -1,4 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { readReports } from './reportService.js';
+import { planData, planToken, planRef, batchRef, planLocation, planPriority, planOrder } from './housekeepingPlan.js';
+import { saveHousekeepingChange, notifyHousekeepingChange } from './housekeepingChanges.js';
 import { assertCurrentSource, failOperation, hkLabels, syncOperations } from './reportOperations.js';
 
 export function createHousekeepingOperations({ db, send, broadcast = () => {}, env = process.env, now = () => new Date() }) {
@@ -6,7 +9,7 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
   function signature(worker, value) {
     const key = env.PMS_MCP_CONTEXT_KEY;
     if (!key || key.length < 32) throw new Error('Operational action signing is not configured');
-    return createHmac('sha256', key).update(`${worker.hotelId}:${worker.id}:${value}`).digest('base64url').slice(0, 22);
+    return createHmac('sha256', key).update(`${worker.hotelId}:${worker.id}:${worker.phone || ''}:${value}`).digest('base64url').slice(0, 22);
   }
   function button(worker, assignmentId, taskId, action, title) {
     const value = `hk.${assignmentId}.${taskId}.${action}.${Math.floor(+now() / 1000) + 86400}`;
@@ -19,20 +22,33 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
     if (!Number.isFinite(expires) || expires < +now() / 1000 || expires > +now() / 1000 + 86410) return null;
     const expected = signature(worker, parts.slice(0, 5).join('.'));
     if (!/^[A-Za-z0-9_-]{22}$/.test(parts[5]) || !timingSafeEqual(Buffer.from(parts[5]), Buffer.from(expected))) return null;
-    return { assignmentId: parts[1], taskId: parts[2], action: parts[3] };
+    return { assignmentId: parts[1], taskId: parts[2].split('~')[0], ref: parts[2], action: parts[3] };
+  }
+  function validRef(action, rows) {
+    if (action.taskId === 'all') return action.ref === batchRef(rows.filter(r => r.status === 'Assigned')) || (action.ref === 'all' && rows.every(r => !r.planVersion));
+    return rows.length === 1 && (action.ref === planRef(rows[0]) || (action.ref === rows[0].id && !rows[0].planVersion));
   }
   async function packet(worker) {
-    const tasks = await db.reportTask.findMany({ where: { hotelId: worker.hotelId, kind: 'housekeeping', active: true, assignedWorkerId: worker.id, status: { in: ['Assigned', 'Accepted', 'In Progress'] } }, orderBy: [{ assignedAt: 'asc' }, { id: 'asc' }] });
+    const snapshot = await readReports(db, { hotelId: worker.hotelId, role: 'housekeeping' });
+    const source = snapshot.reports.find(r => r.kind === 'housekeeping');
+    const current = source?.status === 'complete' && !source.stale && !source.latestRunFailed;
+    const all = await db.reportTask.findMany({ where: { hotelId: worker.hotelId, kind: 'housekeeping', active: true, reportDate: snapshot.today, assignedWorkerId: worker.id, status: { in: ['Assigned', 'Accepted', 'In Progress'] } } });
+    const tasks = all.filter(t => !t.sourceReviewRequired && (t.origin === 'staff' || current)).sort(planOrder);
+    const blocked = all.length - tasks.length;
     const pending = tasks.find(t => t.status === 'Assigned');
     if (pending) {
       const batch = tasks.filter(t => t.assignmentId === pending.assignmentId && t.status === 'Assigned');
-      return { text: `Housekeeping — ${pending.reportDate}\nHi ${worker.name}, ${batch.length} task(s) await your acceptance.\n${batch.slice(0, 8).map(t => `Room ${t.data.room}: ${hkLabels[t.data.task] || t.data.task}`).join('\n')}${batch.length > 8 ? '\nMore tasks will follow after acceptance.' : ''}`.slice(0, 1000),
-        buttons: [button(worker, pending.assignmentId, 'all', 'accept', 'Accept')] };
+      // Accept only a complete, current batch. A partly changed batch needs staff review first.
+      const allPending = all.filter(t => t.assignmentId === pending.assignmentId && t.status === 'Assigned');
+      if (allPending.length !== batch.length) return { text: 'Part of your assignment needs staff review. Contact housekeeping before accepting it. Reply TASKS after the plan is updated.' };
+      return { text: `Housekeeping ? ${pending.reportDate}\nHi ${worker.name}, ${batch.length} task(s) await your acceptance.\n${batch.slice(0, 8).map(t => `${planLocation(t)}: ${hkLabels[planData(t).task] || planData(t).task} (${planPriority(t)})`).join('\n')}${batch.length > 8 ? '\nMore tasks follow after acceptance.' : ''}`.slice(0, 1000),
+        buttons: [button(worker, pending.assignmentId, batchRef(batch), 'accept', 'Accept')] };
     }
-    const task = tasks.find(t => t.status === 'In Progress') || tasks[0];
-    if (!task) return { text: 'No accepted tasks are waiting. Reply TASKS to refresh your assignments.', buttons: [] };
-    return { text: `Room ${task.data.room} — ${hkLabels[task.data.task] || task.data.task}\n${task.data.comment || ''}${task.data.checkoutTime ? `\nExpected checkout: ${task.data.checkoutTime}` : ''}\nStatus: ${task.status}`.slice(0, 1000),
-      buttons: [button(worker, task.assignmentId, task.id, task.status === 'In Progress' ? 'done' : 'start', task.status === 'In Progress' ? 'Completed' : 'Start'), button(worker, task.assignmentId, task.id, 'problem', 'Problem')] };
+    const task = tasks.find(t => t.status === 'In Progress' && (!t.notBefore || +t.notBefore <= +now())) || tasks.find(t => !t.notBefore || +t.notBefore <= +now()) || tasks[0];
+    if (!task) return { text: blocked ? 'Your plan needs staff review or its latest run failed. Contact housekeeping before continuing.' : 'No accepted tasks are waiting. Reply TASKS to refresh your assignments.', buttons: [] };
+    const d = planData(task), accessBlocked = task.notBefore && +task.notBefore > +now();
+    return { text: `${planLocation(task)} ? ${hkLabels[d.task] || d.task}\nPriority: ${planPriority(task)}${d.notBeforeTime ? `\nDo not enter before ${d.notBeforeTime} (hotel time)` : ''}${d.dueTime ? `\nNeeded by ${d.dueTime} (hotel time)` : ''}\n${d.comment || ''}${d.checkoutTime ? `\nExpected checkout: ${d.checkoutTime}` : ''}\nStatus: ${task.status}${accessBlocked ? '\nAccess is restricted. Reply TASKS after the access time.' : ''}`.slice(0, 1000),
+      buttons: [...(accessBlocked ? [] : [button(worker, task.assignmentId, planRef(task), task.status === 'In Progress' ? 'done' : 'start', task.status === 'In Progress' ? 'Completed' : 'Start')]), button(worker, task.assignmentId, planRef(task), 'problem', 'Problem')] };
   }
   async function notify(assignment, worker) {
     if (assignment.deliveryStatus !== 'pending') return assignment;
@@ -44,7 +60,8 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
     try {
       const payload = openWindow ? await packet(worker) : { template: { name: config.templateName, language: { code: config.templateLanguage }, components: [{ type: 'body', parameters: [{ type: 'text', text: worker.name }, { type: 'text', text: String(assignment.taskIds.length) }] }] } };
       const response = await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, ...payload });
-      return await db.housekeepingAssignment.update({ where: { id: assignment.id }, data: { deliveryStatus: response.success ? (openWindow ? 'submitted' : 'template_submitted') : response.uncertain ? 'uncertain' : 'failed', messageId: response.messageId || null, lastError: response.success ? null : 'WhatsApp delivery not confirmed. Check the connection and provider before retrying.' } });
+      await db.housekeepingAssignment.updateMany({ where: { id: assignment.id, deliveryStatus: 'sending' }, data: { deliveryStatus: response.success ? (openWindow ? 'submitted' : 'template_submitted') : response.uncertain ? 'uncertain' : 'failed', messageId: response.messageId || null, lastError: response.success ? null : 'WhatsApp delivery not confirmed. Check the connection and provider before retrying.' } });
+      return db.housekeepingAssignment.findUnique({ where: { id: assignment.id } });
     } catch {
       return db.housekeepingAssignment.update({ where: { id: assignment.id }, data: { deliveryStatus: 'uncertain', lastError: 'Delivery outcome unknown. No automatic resend.' } });
     }
@@ -61,8 +78,7 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
     const worker = await db.housekeepingWorker.findFirst({ where: { id: workerId, hotelId: user.hotelId, active: true, whatsappEnabled: true } });
     if (!worker) failOperation('Select an active WhatsApp-enabled worker from this hotel');
     if (!await db.whatsAppIntegration.findFirst({ where: { hotelId: user.hotelId, status: 'connected', targetType: { in: ['internal', 'both'] } } })) failOperation('Connect the hotel internal WhatsApp number first', 409);
-    const hkSource = source.reports.find(r => r.kind === 'housekeeping');
-    if (!hkSource || hkSource.status !== 'complete' || hkSource.stale || hkSource.latestRunFailed) failOperation('A successful current housekeeping snapshot is required before assigning tasks', 409);
+    signature(worker, 'preflight');
     const assignment = await db.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${user.hotelId}`}, 0))`;
       const replay = await tx.housekeepingAssignment.findUnique({ where: { hotelId_requestKey: { hotelId: user.hotelId, requestKey } } });
@@ -72,7 +88,7 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
       }
       if (!await tx.housekeepingWorker.findFirst({ where: { id: worker.id, hotelId: user.hotelId, phone: worker.phone, active: true, whatsappEnabled: true } })) failOperation('Worker changed; refresh first', 409);
       const rows = await tx.reportTask.findMany({ where: { id: { in: tasks.map(t => t.id) }, hotelId: user.hotelId, kind: 'housekeeping', active: true, reportDate: source.today } });
-      if (rows.length !== tasks.length || rows.some(t => ['In Progress', 'Completed'].includes(t.status) || tasks.find(item => item.id === t.id).contentHash !== t.contentHash)) failOperation('Tasks changed or are already started/completed. Refresh first.', 409);
+      if (rows.length !== tasks.length || rows.some(t => ['In Progress', 'Completed'].includes(t.status) || tasks.find(item => item.id === t.id).contentHash !== planToken(t))) failOperation('Tasks changed or are already started/completed. Refresh first.', 409);
       await assertCurrentSource(tx, user.hotelId, rows, source.today);
       const batch = await tx.housekeepingAssignment.create({ data: { hotelId: user.hotelId, workerId, taskIds: rows.map(t => t.id), requestKey, createdBy: user.id } });
       await tx.reportTask.updateMany({ where: { id: { in: rows.map(t => t.id) }, hotelId: user.hotelId }, data: { assignedWorkerId: workerId, assignmentId: batch.id, status: 'Assigned', assignedAt: now(), acceptedAt: null, startedAt: null, completedAt: null, problemType: null, problemNote: null } });
@@ -96,17 +112,16 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
     let response;
     try {
       const snapshot = await syncOperations(db, { hotelId: worker.hotelId, role: 'housekeeping' });
-      const current = snapshot.reports.find(report => report.kind === 'housekeeping');
       const actionId = message.interactive?.button_reply?.id || message.button?.payload;
       const action = parse(worker, actionId);
-      if (!current || current.status !== 'complete' || current.stale || current.latestRunFailed) response = { text: 'The current housekeeping plan is unavailable or its latest run failed. Please contact your housekeeping manager before continuing.' };
-      else if (actionId && !action) response = { text: 'This action is expired or invalid. Reply TASKS for current assignments.' };
+      if (actionId && !action) response = { text: 'This action is expired or invalid. Reply TASKS for current assignments.' };
       else if (action) {
         const rows = await db.reportTask.findMany({ where: { hotelId: worker.hotelId, active: true, assignedWorkerId: worker.id, assignmentId: action.assignmentId, ...(action.taskId !== 'all' ? { id: action.taskId } : {}) } });
-        if (!rows.length) response = { text: 'This assignment has changed. Reply TASKS for your current work.' };
+        if (!rows.length || !validRef(action, rows)) response = { text: 'This assignment has changed. Reply TASKS for your current work.' };
         else if (action.action === 'problem') {
+          await assertCurrentSource(db, worker.hotelId, rows, snapshot.today);
           const task = rows[0];
-          response = { text: `Room ${task.data.room}: choose the problem type. You can then describe it.`, buttons: [button(worker, action.assignmentId, task.id, 'dnd', 'Do not disturb'), button(worker, action.assignmentId, task.id, 'maintenance', 'Maintenance')] };
+          response = { text: `${planLocation(task)}: choose the problem type. You can then describe it.`, buttons: [button(worker, action.assignmentId, planRef(task), 'dnd', 'Do not disturb'), button(worker, action.assignmentId, planRef(task), 'maintenance', 'Maintenance')] };
         } else {
           const target = { accept: 'Accepted', start: 'In Progress', done: 'Completed', dnd: 'Problem', maintenance: 'Problem' }[action.action];
           const from = { accept: ['Assigned'], start: ['Accepted'], done: ['In Progress'], dnd: ['Accepted', 'In Progress'], maintenance: ['Accepted', 'In Progress'] }[action.action];
@@ -114,8 +129,11 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
           if (target) await db.$transaction(async tx => {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${worker.hotelId}`}, 0))`;
             if (!await tx.housekeepingWorker.findFirst({ where: { id: worker.id, hotelId: worker.hotelId, phone: worker.phone, active: true, whatsappEnabled: true } })) failOperation('Worker changed', 409);
-            await assertCurrentSource(tx, worker.hotelId, rows, snapshot.today);
-            for (const row of rows) {
+            const fresh = await tx.reportTask.findMany({ where: { hotelId: worker.hotelId, active: true, assignedWorkerId: worker.id, assignmentId: action.assignmentId, ...(action.taskId !== 'all' ? { id: action.taskId } : {}) } });
+            if (!validRef(action, fresh)) failOperation('Instructions changed. Reply TASKS for current instructions.', 409);
+            await assertCurrentSource(tx, worker.hotelId, fresh, snapshot.today);
+            if (['start', 'done'].includes(action.action) && fresh.some(r => r.notBefore && +r.notBefore > +now())) failOperation('Do not enter before the recorded access time. Reply TASKS for details.', 409);
+            for (const row of fresh) {
               const changes = { status: target, ...(target === 'Accepted' ? { acceptedAt: now() } : target === 'In Progress' ? { startedAt: now() } : target === 'Completed' ? { completedAt: now() } : { problemType: action.action }) };
               const updated = await tx.reportTask.updateMany({ where: { id: row.id, hotelId: worker.hotelId, assignedWorkerId: worker.id, assignmentId: action.assignmentId, active: true, status: { in: from } }, data: changes });
               if (updated.count) {
@@ -128,7 +146,7 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
           });
           if (target === 'Problem' && changedCount) response = { text: 'Problem recorded for the housekeeping manager. Please reply with a short description, or reply TASKS to continue.' };
         }
-      } else if (worker.pendingProblemTaskId && message.text?.body && !/^tasks$/i.test(message.text.body.trim())) {
+      } else if (worker.pendingProblemTaskId && message.text?.body && !/^(tasks|housekeeping)$/i.test(message.text.body.trim())) {
         await db.$transaction(async tx => {
           await tx.reportTask.updateMany({ where: { id: worker.pendingProblemTaskId, hotelId: worker.hotelId, assignedWorkerId: worker.id, active: true, status: 'Problem' }, data: { problemNote: message.text.body.slice(0, 2000) } });
           await tx.housekeepingWorker.update({ where: { id: worker.id }, data: { pendingProblemTaskId: null } });
@@ -138,10 +156,16 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
       await db.whatsAppReceipt.update({ where: { id: receiptId }, data: { status: 'sending', replyText: JSON.stringify(response) } });
       const delivered = await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, ...response });
       await db.whatsAppReceipt.update({ where: { id: receiptId }, data: { status: delivered.success ? 'done' : 'uncertain', providerMessageId: delivered.messageId || null, lastError: delivered.success ? null : 'Reply not confirmed; worker can send TASKS again.' } });
-    } catch {
+    } catch (error) {
+      if (error.status) { try { await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, text: error.message }); } catch {} }
       await db.whatsAppReceipt.update({ where: { id: receiptId }, data: { status: 'uncertain', lastError: 'Operational reply interrupted. Inspect task state; no automatic replay.' } });
     }
     publish(worker.hotelId); return true;
   }
-  return { assign, handle, button, parse, packet };
+  async function change(user, id, input) {
+    const saved = await saveHousekeepingChange(db, user, id, input);
+    const notification = await notifyHousekeepingChange({ db, send, now }, saved);
+    publish(user.hotelId); return notification;
+  }
+  return { assign, change, handle, button, parse, packet };
 }

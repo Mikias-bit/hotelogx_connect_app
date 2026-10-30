@@ -749,6 +749,14 @@ model ReportTask {
   itemKey String
   contentHash String
   data Json
+  origin String @default("report")
+  overrides Json @default("{}")
+  pendingSourceData Json?
+  sourcePresent Boolean @default(true)
+  sourceReviewRequired Boolean @default(false)
+  planVersion Int @default(0)
+  notBefore DateTime?
+  dueAt DateTime?
   sourceGeneratedAt DateTime
   active Boolean @default(true)
   status String @default("New")
@@ -794,7 +802,28 @@ model ReportTaskEvent {
 model HousekeepingConfig {
   hotelId String @id
   templateName String?
+  changeTemplateName String?
   templateLanguage String @default("en_US")
+}
+
+model HousekeepingPlanChange {
+  id String @id @default(uuid())
+  hotelId String
+  taskId String
+  requestKey String
+  requestHash String
+  planVersion Int
+  workerId String?
+  workerPhone String?
+  assignmentId String?
+  details Json
+  deliveryStatus String @default("pending")
+  messageId String?
+  lastError String?
+  createdBy String
+  createdAt DateTime @default(now())
+  @@unique([hotelId, requestKey])
+  @@index([hotelId, taskId, createdAt])
 }
 
 model PmsUpsellProduct {

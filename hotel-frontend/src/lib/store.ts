@@ -536,7 +536,7 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
     ),
   }));
 
-  if (task.source === 'Daily report') window.dispatchEvent(new Event('hotelogx:operations-updated'));
+  if (task.id.startsWith('rt-')) window.dispatchEvent(new Event('hotelogx:operations-updated'));
 
   if (status === "Completed") {
     pushActivity({ kind: "task", text: `Completed — ${task.title}${task.room ? ` (${task.room})` : ""}`, meta: task.department });
@@ -558,7 +558,7 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
 }
 
 export async function assignTask(taskId: string, assignee: string) {
-  if (store.state.tasks.find(t => t.id === taskId)?.source === 'Daily report') {
+  if (taskId.startsWith('rt-')) {
     toast('Use the Housekeeping Assignments page', 'attend', 'Select tasks and a registered worker, then Assign & Send WhatsApp.'); return;
   }
   const result = await api.updateTaskStatus(taskId, "Assigned", `Assigned to ${assignee}`, "whatsapp", assignee);
