@@ -33,12 +33,7 @@ export function TaskComposer({
 
   function getDynamicAssignees(dept: Department): string[] {
     if (dept === "Housekeeping") return hkCleaners;
-    if (dept === "Maintenance") {
-      const techUsers = users
-        .filter((u) => u.role === "maintenance" || u.title?.toLowerCase().includes("tech") || u.title?.toLowerCase().includes("maint"))
-        .map((u) => u.name);
-      return techUsers.length > 0 ? techUsers : ["Peter Janssens", "Milan Novák"];
-    }
+    if (dept === "Maintenance") return []; // Registered technicians are assigned from Maintenance Assignments.
     const deskUsers = users.filter((u) => u.role === "front-office" || u.role === "manager").map((u) => u.name);
     return deskUsers.length > 0 ? deskUsers : ["Jonas Verhaeghe", "Amélie Duprez", "Thibault Moreau"];
   }
@@ -108,7 +103,7 @@ export function TaskComposer({
 
           <label className="block">
             <span className={label}>Send to</span>
-            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={field}>
+            <select disabled={department === "Maintenance"} value={assignee} onChange={(e) => setAssignee(e.target.value)} className={field}>
               <option value="">Leave unassigned</option>
               {options.map((o) => (
                 <option key={o}>{o}</option>
@@ -116,8 +111,7 @@ export function TaskComposer({
             </select>
           </label>
           <p className="text-[11px] leading-snug text-ink-4">
-            Assigned tasks are delivered as an interactive WhatsApp card. The status the person taps comes straight back into
-            these dashboards.
+            {department === 'Maintenance' ? 'Create this task first, then select a registered technician on Maintenance ? Assignments.' : 'Assign tasks through the department?s assignment page to request WhatsApp acceptance.'}
           </p>
         </div>
 
@@ -136,7 +130,7 @@ export function TaskComposer({
                 department,
                 priority,
                 due: due.trim() || undefined,
-                assignee: assignee || undefined,
+                assignee: department === "Maintenance" ? undefined : assignee || undefined,
                 source,
                 conversationId: defaults?.conversationId,
               });

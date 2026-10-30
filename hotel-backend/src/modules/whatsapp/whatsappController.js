@@ -9,9 +9,10 @@ import { WhatsAppMessagingService } from './WhatsAppMessagingService.js';
 import { WhatsAppWebhookService, verifyMetaSignature } from './WhatsAppWebhookService.js';
 import { withGmailMailboxLock } from '../email/gmail/runtime.js';
 import { housekeepingOperations } from '../reports/operationsRuntime.js';
+import { maintenanceOperations } from '../maintenance/runtime.js';
 const messaging = new WhatsAppMessagingService({ db: prisma, request: createMetaClient() });
 const webhook = new WhatsAppWebhookService({ db: prisma, withLock: withGmailMailboxLock, automate: processGuestMessageAI,
- handleOperations: (integration, message) => housekeepingOperations.handle(integration, message),
+ handleOperations: async (integration, message) => await maintenanceOperations.handle(integration, message) || housekeepingOperations.handle(integration, message),
  send: options => messaging.send(options), broadcast: (...args) => realtimeService.broadcastToHotel(...args) });
 export const sanitizePhoneNumber = phone => String(phone || '').replace(/\D/g, '');
 export const sendMetaWhatsAppMessage = (to, text, buttons = [], hotelId = null, targetType = 'guest') => messaging.send({ to, text, buttons, hotelId, targetType });

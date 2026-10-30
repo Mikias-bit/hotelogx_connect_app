@@ -1,3 +1,4 @@
+import { maintenanceOperations } from '../maintenance/runtime.js';
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 import { readOperations, updateReportTask } from '../reports/reportOperations.js';
@@ -70,6 +71,7 @@ export const createTask = async (req, res, next) => {
       conversationId,
     } = req.body;
 
+    if (department === 'Maintenance' && assignee) return errorResponse(res, 'Use Maintenance Assignments to choose a registered technician', 400);
     if (!title) {
       return errorResponse(res, 'Task title is required', 400);
     }
@@ -124,6 +126,7 @@ export const createTask = async (req, res, next) => {
       },
     });
 
+    if (department === 'Maintenance') realtimeService.broadcastToHotel(hotelId, 'maintenance:updated', { refresh: true });
     return successResponse(res, task, 'Task created successfully', 201);
   } catch (error) {
     next(error);
@@ -153,6 +156,12 @@ export const updateTaskStatus = async (req, res, next) => {
     if (!existing) {
       return errorResponse(res, 'Task not found', 404);
     }
+    if (existing.department === 'Maintenance') {
+      if (assignee !== undefined) return errorResponse(res, 'Use Maintenance Assignments to choose a registered technician', 400);
+      try { return successResponse(res, await maintenanceOperations.updateStatus(req.user, 'task', id, req.body)); }
+      catch (error) { if (error.status) return errorResponse(res, error.message, error.status); throw error; }
+    }
+
 
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;

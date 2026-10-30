@@ -75,6 +75,14 @@ export function useRealtimeSync(hotelId: string = "hotel-mercier") {
           if (isMounted && rows && localStorage.getItem('token') === currentToken) store.setState(s => ({ ...s, waThreads: rows }));
         });
       });
+      es.addEventListener('maintenance:updated', () => {
+        if (localStorage.getItem('token') !== token) return;
+        window.dispatchEvent(new Event('hotelogx:maintenance-updated'));
+        void Promise.all([api.getIssues(), api.getTasks()]).then(([issues, tasks]) => {
+          if (!isMounted || localStorage.getItem('token') !== token) return;
+          store.setState(state => ({ ...state, ...(issues ? { issues } : {}), ...(tasks ? { tasks } : {}) }));
+        }).catch(() => {});
+      });
       es.addEventListener('reports:updated', () => {
         const currentToken = localStorage.getItem('token');
         if (currentToken !== token) return;

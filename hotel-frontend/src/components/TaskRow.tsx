@@ -34,7 +34,7 @@ const sourceIcon: Record<string, React.ComponentType<{ className?: string }>> = 
 
 export function TaskRow({ task, onOpen, showDepartment = true }: { task: Task; onOpen?: (task: Task) => void; showDepartment?: boolean }) {
   const user = useCurrentUser();
-  const canUpdate = !task.stale && !(task.source === 'Daily report' && task.department === 'Housekeeping' && user?.role === 'front-office');
+  const canUpdate = task.department !== "Maintenance" && !task.stale && !(task.source === 'Daily report' && task.department === 'Housekeeping' && user?.role === 'front-office');
   const SourceIcon = (task?.source ? sourceIcon[task.source] : undefined) ?? DefaultSourceIcon;
   const done = task?.status === "Completed";
   return (

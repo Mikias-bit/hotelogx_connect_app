@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { maintenanceOperations } from '../maintenance/runtime.js';
+import { realtimeService } from '../../services/realtimeService.js';
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 
@@ -17,20 +20,11 @@ function normalizeStatus(status) {
   return status;
 }
 
-/**
- * Denormalize frontend status → backend status for writes.
- * If frontend sends "Open", we store "Reported" only on initial creation.
- * For updates we pass through as-is (Accepted, In Progress, etc.).
- */
-function denormalizeStatus(status) {
-  // Frontend "Open" maps to "Reported" only for creation
-  // All other statuses are stored verbatim
-  return status;
-}
-
 /** Map a Prisma Issue row to the frontend Issue shape. */
 function formatIssue(i) {
   return {
+    assignedWorkerId: i.assignedWorkerId, assignmentId: i.assignmentId, assignedAt: i.assignedAt,
+    acceptedAt: i.acceptedAt, startedAt: i.startedAt, completedAt: i.completedAt, problemNote: i.problemNote, version: i.version,
     id: i.id,
     room: i.room,
     title: i.title,
@@ -93,7 +87,8 @@ export const createIssue = async (req, res, next) => {
       outOfService,
     } = req.body;
 
-    if (!room || !title) {
+    if (assignee) return errorResponse(res, 'Assign a registered technician from Maintenance Assignments', 400);
+    if (typeof room !== 'string' || !room.trim() || room.length > 200 || typeof title !== 'string' || !title.trim() || title.length > 300 || (detail !== undefined && typeof detail !== 'string') || (detail || '').length > 4000 || !['Urgent', 'High', 'Normal', 'Low'].includes(priority)) {
       return errorResponse(res, 'Room and title are required', 400);
     }
 
@@ -105,17 +100,7 @@ export const createIssue = async (req, res, next) => {
 
     const at = timeNow();
 
-    // Generate a unique MT-XXX id (collision-safe: check existing max)
-    const existing = await prisma.issue.findMany({
-      where: { hotelId },
-      select: { id: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    const numbers = existing
-      .map((e) => parseInt(e.id.replace('MT-', ''), 10))
-      .filter((n) => !isNaN(n));
-    const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 100;
-    const id = `MT-${nextNum}`;
+    const id = `MT-${randomUUID()}`;
 
     // All writes in a single transaction
     const issue = await prisma.$transaction(async (tx) => {
@@ -130,8 +115,8 @@ export const createIssue = async (req, res, next) => {
           reportedBy: reporter,
           via,
           createdAt: at,
-          assignee: assignee || null,
-          status: assignee ? 'Accepted' : 'Reported',
+          assignee: null,
+          status: 'Reported',
           outOfService: isOos,
           updates: {
             create: [{ at, text: `Reported by ${reporter} via ${via}`, via: 'dashboard' }],
@@ -151,7 +136,7 @@ export const createIssue = async (req, res, next) => {
       // Activity log
       await tx.activityItem.create({
         data: {
-          id: `act-${Date.now()}`,
+          id: `act-${randomUUID()}`,
           hotelId,
           at,
           kind: 'maintenance',
@@ -163,6 +148,7 @@ export const createIssue = async (req, res, next) => {
       return created;
     });
 
+    realtimeService.broadcastToHotel(hotelId, 'maintenance:updated', { refresh: true });
     return successResponse(res, formatIssue(issue), 'Issue created successfully', 201);
   } catch (error) {
     next(error);
@@ -173,221 +159,13 @@ export const createIssue = async (req, res, next) => {
 
 export const updateIssueStatus = async (req, res, next) => {
   try {
-    const hotelId = req.user?.hotelId;
-    if (!hotelId) return errorResponse(res, 'Authentication and hotel context required', 401);
-    const { id } = req.params;
-    const { status, note, via = 'dashboard' } = req.body;
-
-    if (!status) {
-      return errorResponse(res, 'status is required', 400);
-    }
-
-    const existing = await prisma.issue.findFirst({
-      where: { id, hotelId },
-      include: { updates: { orderBy: { id: 'asc' } } },
-    });
-
-    if (!existing) {
-      return errorResponse(res, 'Issue not found', 404);
-    }
-
-    const at = timeNow();
-
-    if (status === 'Completed') {
-      // Full closed-loop transaction:
-      // 1. Complete issue  2. Room → Dirty  3. Close open Maintenance tasks
-      // 4. Create HK re-inspect task  5. Activity log
-      const updated = await prisma.$transaction(async (tx) => {
-        // 1. Update issue
-        const updatedIssue = await tx.issue.update({
-          where: { id },
-          data: {
-            status: 'Completed',
-            outOfService: false,
-            updates: {
-              create: {
-                at,
-                text: note || `Issue completed by ${req.user?.name ?? 'technician'}`,
-                via,
-              },
-            },
-          },
-          include: { updates: { orderBy: { id: 'asc' } } },
-        });
-
-        // 2. Room → Dirty (authoritative backend transition)
-        await tx.room.updateMany({
-          where: { number: existing.room, hotelId },
-          data: {
-            status: 'Dirty',
-            updatedAt: at,
-            note: 'Maintenance finished. Requires housekeeping re-inspection.',
-          },
-        });
-
-        // 3. Close any open Maintenance tasks linked to this room
-        const maintenanceTasks = await tx.task.findMany({
-          where: {
-            hotelId,
-            room: existing.room,
-            department: 'Maintenance',
-            status: { not: 'Completed' },
-          },
-        });
-        for (const t of maintenanceTasks) {
-          await tx.task.update({
-            where: { id: t.id },
-            data: {
-              status: 'Completed',
-              trail: {
-                create: {
-                  at,
-                  text: `Auto-completed — issue ${id} resolved`,
-                  via: 'ai',
-                },
-              },
-            },
-          });
-        }
-
-        // 4. Create Housekeeping re-inspect task
-        const hkTaskId = `t-hk-${Date.now()}`;
-        await tx.task.create({
-          data: {
-            id: hkTaskId,
-            hotelId,
-            title: `Re-inspect Room ${existing.room} after ${existing.title}`,
-            room: existing.room,
-            department: 'Housekeeping',
-            priority: 'High',
-            createdAt: at,
-            status: 'New',
-            source: 'Maintenance',
-            trail: {
-              create: {
-                at,
-                text: `Auto-generated — maintenance ticket ${id} completed`,
-                via: 'ai',
-              },
-            },
-          },
-        });
-
-        // 5. Activity log
-        await tx.activityItem.create({
-          data: {
-            id: `act-${Date.now()}`,
-            hotelId,
-            at,
-            kind: 'maintenance',
-            text: `Issue ${id} completed — Room ${existing.room} back for HK recheck`,
-            meta: note || undefined,
-          },
-        });
-
-        return updatedIssue;
-      });
-
-      return successResponse(res, formatIssue(updated), 'Issue completed — closed-loop automation done');
-    }
-
-    // Non-Completed status update (Accept, In Progress, Waiting Parts, Escalated, etc.)
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedIssue = await tx.issue.update({
-        where: { id },
-        data: {
-          status,
-          updates: {
-            create: {
-              at,
-              text: note || `Status updated to ${status}`,
-              via,
-            },
-          },
-        },
-        include: { updates: { orderBy: { id: 'asc' } } },
-      });
-
-      await tx.activityItem.create({
-        data: {
-          id: `act-${Date.now()}`,
-          hotelId,
-          at,
-          kind: 'maintenance',
-          text: `Issue ${id} (Room ${existing.room}) — ${status}`,
-          meta: note || undefined,
-        },
-      });
-
-      return updatedIssue;
-    });
-
-    return successResponse(res, formatIssue(updated), 'Issue status updated');
+    const issue = await maintenanceOperations.updateStatus(req.user, 'issue', req.params.id, req.body);
+    return successResponse(res, formatIssue(issue), 'Issue updated');
   } catch (error) {
+    if (error.status) return errorResponse(res, error.message, error.status);
     next(error);
   }
 };
 
-// ─── PATCH /api/issues/:id/assign ─────────────────────────────────────────────
-
-export const assignIssue = async (req, res, next) => {
-  try {
-    const hotelId = req.user?.hotelId;
-    if (!hotelId) return errorResponse(res, 'Authentication and hotel context required', 401);
-    const { id } = req.params;
-    const { assignee } = req.body;
-
-    if (!assignee) {
-      return errorResponse(res, 'assignee is required', 400);
-    }
-
-    const existing = await prisma.issue.findFirst({
-      where: { id, hotelId },
-    });
-
-    if (!existing) {
-      return errorResponse(res, 'Issue not found', 404);
-    }
-
-    const at = timeNow();
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedIssue = await tx.issue.update({
-        where: { id },
-        data: {
-          assignee,
-          // Only advance to Accepted if currently Open/Reported
-          status:
-            existing.status === 'Reported' || existing.status === 'Open'
-              ? 'Accepted'
-              : existing.status,
-          updates: {
-            create: {
-              at,
-              text: `Assigned to ${assignee}`,
-              via: 'dashboard',
-            },
-          },
-        },
-        include: { updates: { orderBy: { id: 'asc' } } },
-      });
-
-      await tx.activityItem.create({
-        data: {
-          id: `act-${Date.now()}`,
-          hotelId,
-          at,
-          kind: 'maintenance',
-          text: `Issue ${id} assigned to ${assignee} (Room ${existing.room})`,
-          meta: undefined,
-        },
-      });
-
-      return updatedIssue;
-    });
-
-    return successResponse(res, formatIssue(updated), 'Issue assigned');
-  } catch (error) {
-    next(error);
-  }
-};
+export const assignIssue = (req, res) => errorResponse(res,
+  'Use Maintenance Assignments to select a registered technician and send an acceptance request.', 409);

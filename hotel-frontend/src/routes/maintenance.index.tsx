@@ -1,187 +1,49 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { AlertOctagon, CheckCircle2, ClipboardList, DoorClosed, Timer, Wrench } from "lucide-react";
-import { AppShell } from "@/components/AppShell";
-import { Briefing } from "@/components/Briefing";
-import { IssueCard } from "@/components/IssueCard";
-import { WhatsAppOps } from "@/components/WhatsAppOps";
-import { Badge, Button, Card, Empty, Eyebrow, SectionTitle, StatCard } from "@/components/ui";
-import { technicians } from "@/lib/data";
-import { useApp } from "@/lib/store";
-import { useCurrentUser } from "@/lib/session";
-import { greeting } from "@/lib/utils";
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { AlertOctagon, ArrowRight, CheckCircle2, DoorClosed, Timer, Wrench } from 'lucide-react';
+import { AppShell } from '@/components/AppShell';
+import { Briefing } from '@/components/Briefing';
+import { WhatsAppOps } from '@/components/WhatsAppOps';
+import { MaintenanceWorkCard } from '@/components/MaintenanceWorkCard';
+import { Badge, Button, Card, Empty, Eyebrow, SectionTitle, StatCard } from '@/components/ui';
+import { useMaintenance } from '@/lib/useMaintenance';
+import { useCurrentUser } from '@/lib/session';
+import { greeting } from '@/lib/utils';
 
-export const Route = createFileRoute("/maintenance/")({
-  component: MaintenanceDashboard,
-});
-
+export const Route = createFileRoute('/maintenance/')({ component: MaintenanceDashboard });
 function MaintenanceDashboard() {
-  const user = useCurrentUser();
-  const issues = useApp((s) => s.issues);
-  const tasks = useApp((s) => s.tasks.filter((t) => t.department === "Maintenance"));
-
-  const open = issues.filter((i) => i.status !== "Completed");
-  const urgent = open.filter((i) => i.priority === "Urgent");
-  const inProgress = issues.filter((i) => i.status === "In Progress" || i.status === "Accepted");
-  const completed = issues.filter((i) => i.status === "Completed");
-  const oos = issues.filter((i) => i.outOfService && i.status !== "Completed");
-  const waitingParts = open.filter((i) => i.status === "Waiting Parts");
-
-  const mine = open.filter((i) => i.assignee === user?.name);
-  const active = [...open].sort((a, b) => {
-    const rank = { Urgent: 0, High: 1, Normal: 2, Low: 3 } as const;
-    return rank[a.priority] - rank[b.priority] || a.createdAt.localeCompare(b.createdAt);
-  });
-
-  return (
-    <AppShell title="Maintenance" wide>
-      <div className="space-y-5">
-        <div>
-          <Eyebrow>Technical department</Eyebrow>
-          <h1 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">
-            {greeting()}, {user?.name.split(" ")[0] ?? "team"}
-          </h1>
-          <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
-            {mine.length > 0
-              ? `${mine.length} ${mine.length === 1 ? "ticket" : "tickets"} assigned to you. `
-              : "Nothing assigned to you right now. "}
-            Everything below can also be worked from WhatsApp.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-          <StatCard label="Open issues" value={open.length} icon={Wrench} tone="attend" delay={0} />
-          <StatCard
-            label="Urgent"
-            value={urgent.length}
-            hint={urgent.length > 0 ? urgent.map((i) => i.room).join(", ") : "none right now"}
-            icon={AlertOctagon}
-            tone="urgent"
-            emphasis={urgent.length > 0}
-            delay={40}
-          />
-          <StatCard label="In progress" value={inProgress.length} icon={Timer} tone="ai" delay={80} />
-          <StatCard label="Completed today" value={completed.length} icon={CheckCircle2} tone="good" delay={120} />
-          <StatCard
-            label="Rooms out of service"
-            value={oos.length}
-            hint={oos.length > 0 ? oos.map((i) => i.room).join(", ") : "all sellable"}
-            icon={DoorClosed}
-            tone={oos.length > 0 ? "urgent" : "good"}
-            delay={160}
-          />
-        </div>
-
-        <Briefing
-          eyebrow="AI maintenance brief"
-          opening={
-            urgent.length > 0
-              ? `${urgent[0].room} is the one that decides today — ${urgent[0].title.toLowerCase()}.`
-              : "Nothing urgent open. Good morning to clear the small ones."
-          }
-          lines={[
-            ...urgent.map((i) => ({
-              text: `${i.id} · Room ${i.room} — ${i.title}. ${i.outOfService ? "Room is blocked until you release it." : "Guest is in-house."}`,
-              tone: "urgent" as const,
-              meta: i.assignee ?? "unassigned",
-            })),
-            ...waitingParts.map((i) => ({
-              text: `${i.id} · Room ${i.room} waiting on parts. Front office has been told the room stays out.`,
-              tone: "attend" as const,
-              meta: "waiting parts",
-            })),
-            {
-              text: `${issues.filter((i) => i.via.startsWith("Housekeeping")).length} of today's tickets came straight from housekeeping's WhatsApp buttons — no phone calls needed.`,
-              tone: "ai",
-              meta: "auto-routed",
-            },
-            {
-              text: "Completing a ticket sends the room back to housekeeping for a recheck and tells the guest their issue is fixed.",
-              tone: "pine",
-              meta: "automatic",
-            },
-          ]}
-          footnote="Written from live tickets, room status and guest conversations."
-          action={
-            <Button variant="outline" onClick={() => document.getElementById("active-issues")?.scrollIntoView({ behavior: "smooth" })}>
-              View details
-            </Button>
-          }
-        />
-
-        <div className="grid gap-4 lg:grid-cols-[1fr_380px] lg:items-start">
-          <div className="space-y-5">
-            <section id="active-issues">
-              <SectionTitle title="Active issues" hint={`${open.length} open · sorted by urgency`} />
-              {active.length === 0 ? (
-                <Empty title="No open issues" hint="Enjoy it while it lasts." icon={CheckCircle2} />
-              ) : (
-                <div className="space-y-3">
-                  {active.map((i) => (
-                    <IssueCard key={i.id} issue={i} />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section>
-              <SectionTitle title="Technicians" hint="who is carrying what" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                {technicians.map((t) => {
-                  const load = open.filter((i) => i.assignee === t);
-                  return (
-                    <Card key={t}>
-                      <div className="flex items-center justify-between">
-                        <p className="text-[13.5px] font-medium text-ink">{t}</p>
-                        <Badge tone={load.length > 1 ? "attend" : "good"}>{load.length} open</Badge>
-                      </div>
-                      <ul className="mt-2.5 space-y-1.5">
-                        {load.length === 0 && <li className="text-[12.5px] text-ink-4">Free — send the next ticket here.</li>}
-                        {load.map((i) => (
-                          <li key={i.id} className="flex items-center gap-2 text-[12.5px] text-ink-2">
-                            <span className="tnum font-mono text-[11px] text-ink-4">{i.room}</span>
-                            <span className="truncate">{i.title}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </Card>
-                  );
-                })}
-              </div>
-            </section>
-
-            {tasks.filter((t) => t.status !== "Completed").length > 0 && (
-              <section>
-                <SectionTitle
-                  title="Related tasks"
-                  hint="parts, follow-ups and checks"
-                  action={
-                    <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-4">
-                      <ClipboardList className="size-3.5" /> {tasks.filter((t) => t.status !== "Completed").length} open
-                    </span>
-                  }
-                />
-                <Card pad={false}>
-                  <ul>
-                    {tasks
-                      .filter((t) => t.status !== "Completed")
-                      .map((t) => (
-                        <li key={t.id} className="flex items-center gap-3 border-b border-line-soft px-4 py-3 last:border-b-0">
-                          <span className="tnum w-10 shrink-0 font-mono text-[12px] text-ink-4">{t.room ?? "—"}</span>
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{t.title}</span>
-                          <Badge tone="mute">{t.status}</Badge>
-                        </li>
-                      ))}
-                  </ul>
-                </Card>
-              </section>
-            )}
-          </div>
-
-          <Card className="lg:sticky lg:top-20 lg:h-[calc(100dvh-8rem)]">
-            <WhatsAppOps department="Maintenance" />
-          </Card>
-        </div>
+  const user = useCurrentUser(), navigate = useNavigate();
+  const { data, error, loading, load } = useMaintenance();
+  const work = data?.work || [], open = work.filter(row => row.status !== 'Completed');
+  const urgent = open.filter(row => row.priority === 'Urgent');
+  const active = work.filter(row => row.status === 'In Progress');
+  const completed = work.filter(row => row.status === 'Completed');
+  const flagged = new Set(work.filter(row => row.kind === 'issue' && row.outOfService && row.status !== 'Completed').map(row => row.room));
+  const unaccepted = work.filter(row => row.status === 'Assigned');
+  const count = (value: number) => data && !error ? value : '\u2014';
+  return <AppShell title="Maintenance" wide>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><Eyebrow>Technical department</Eyebrow><h1 className="mt-1.5 font-display text-[26px] font-medium text-ink">{greeting()}, {user?.name.split(' ')[0] || 'team'}</h1><p className="mt-1.5 text-[13.5px] text-ink-3">Your hotel's issues, tasks and technician progress, updated from the backend.</p></div><div className="flex gap-2"><Button variant="quiet" disabled={loading} onClick={() => void load()}>Refresh</Button><Button icon={ArrowRight} onClick={() => navigate({ to: '/maintenance/assignments' })}>Assignments</Button></div></div>
+      {error && <p role="alert" className="text-sm text-urgent">{error} Existing records may be out of date.</p>}
+      {loading && !data && <p role="status">Loading maintenance records?</p>}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        <StatCard label="Open work" value={count(open.length)} icon={Wrench} tone="attend" hint="issues and follow-ups" onClick={() => navigate({ to: '/maintenance/assignments' })} />
+        <StatCard label="Urgent" value={count(urgent.length)} icon={AlertOctagon} tone="urgent" emphasis={urgent.length > 0} delay={40} />
+        <StatCard label="In progress" value={count(active.length)} icon={Timer} tone="ai" delay={80} />
+        <StatCard label="Completed" value={count(completed.length)} icon={CheckCircle2} tone="good" delay={120} />
+        <StatCard label="Rooms flagged" value={count(flagged.size)} icon={DoorClosed} tone="attend" hint="out-of-service issue flags" delay={160} />
       </div>
-    </AppShell>
-  );
+      {data && !error && <Briefing eyebrow="Maintenance overview" opening={`${open.length} open items. ${unaccepted.length} assignments awaiting technician acceptance.`} lines={[
+        ...urgent.slice(0, 3).map(row => ({ text: `${row.room ? 'Room / location ' + row.room + ': ' : ''}${row.title}`, tone: 'urgent' as const, meta: row.assignee || 'Unassigned' })),
+        { text: `${work.filter(row => row.status === 'Waiting Parts').length} items waiting for parts; ${work.filter(row => row.status === 'Escalated').length} need help.`, tone: 'attend' as const },
+        { text: 'Technicians accept, start and complete assigned work on WhatsApp. Review room readiness separately after a repair.', tone: 'pine' as const },
+      ]} footnote="Based on saved maintenance issues, tasks and worker responses." />}
+      <div className="grid gap-4 lg:grid-cols-[1fr_380px] lg:items-start"><div className="space-y-5">
+        <section><SectionTitle title="Active work" hint="Sorted by priority" />{open.map(row => <MaintenanceWorkCard key={`${row.kind}:${row.id}`} work={row} />)}{data && !error && !open.length && <Empty title="No open maintenance work" hint="Create an issue or follow-up task to get started." icon={CheckCircle2} />}</section>
+        <section><SectionTitle title="Technicians" hint="Registered workers and current workload" /><div className="grid gap-3 sm:grid-cols-2">{data?.workers.filter(worker => worker.active || open.some(row => row.assignedWorkerId === worker.id)).map(worker => {
+          const assigned = open.filter(row => row.assignedWorkerId === worker.id);
+          return <Card key={worker.id}><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">{worker.name}</p><Badge tone={assigned.length ? 'attend' : 'mute'}>{assigned.length} open</Badge></div><ul className="mt-3 space-y-2 text-[12.5px] text-ink-3">{assigned.map(row => <li key={`${row.kind}:${row.id}`}>{row.room || 'General'} ? {row.title} ? {row.status}</li>)}</ul>{!assigned.length && <p className="mt-3 text-sm text-ink-3">No open assignments.</p>}</Card>;
+        })}</div>{data && !data.workers.length && <Empty title="No technicians registered" hint="Add technicians on the Assignments page." />}</section>
+      </div><Card className="lg:sticky lg:top-20 lg:h-[calc(100dvh-8rem)]"><WhatsAppOps department="Maintenance" /></Card></div>
+    </div>
+  </AppShell>;
 }

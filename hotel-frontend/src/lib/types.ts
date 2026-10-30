@@ -34,7 +34,7 @@ export type Department =
   | "VIP"
   | "Billing"
   | "Follow-up";
-export type TaskStatus = "New" | "Assigned" | "In Progress" | "Waiting" | "Completed" | "Escalated";
+export type TaskStatus = "Accepted" | "New" | "Assigned" | "In Progress" | "Waiting" | "Completed" | "Escalated";
 export type Priority = "Urgent" | "High" | "Normal" | "Low";
 export type TaskSource =
   | "Daily report"
@@ -198,6 +198,14 @@ export interface Room {
 }
 
 export interface Issue {
+  assignedWorkerId?: string;
+  assignmentId?: string;
+  assignedAt?: string;
+  acceptedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  problemNote?: string;
+  version?: number;
   id: string;
   room: string;
   title: string;
@@ -207,7 +215,7 @@ export interface Issue {
   via: string;
   createdAt: string;
   assignee?: string;
-  status: "Open" | "Accepted" | "In Progress" | "Waiting Parts" | "Completed" | "Escalated";
+  status: "Open" | "Assigned" | "Accepted" | "In Progress" | "Waiting Parts" | "Completed" | "Escalated";
   outOfService: boolean;
   updates: { at: string; text: string; via?: "whatsapp" | "dashboard" }[];
 }
@@ -468,3 +476,21 @@ export interface MewsFolio {
   status: string;
 }
 
+
+export interface MaintenanceWork {
+  kind: 'issue' | 'task'; id: string; title: string; room?: string; detail?: string;
+  priority: Priority; status: string; createdAt: string; assignee?: string;
+  assignedWorkerId?: string; assignmentId?: string; assignedAt?: string; acceptedAt?: string;
+  startedAt?: string; completedAt?: string; problemNote?: string; version: number;
+  outOfService?: boolean; reportedBy?: string; via?: string;
+  updates?: { at: string; text: string; via?: string }[];
+  trail?: { at: string; text: string; via?: string }[];
+}
+export interface MaintenanceWorker {
+  id: string; name: string; phone: string; active: boolean; whatsappEnabled: boolean; language: string;
+}
+export interface MaintenanceData {
+  work: MaintenanceWork[]; workers: MaintenanceWorker[];
+  config: { templateName: string; templateLanguage: string };
+  assignments: { id: string; workerId: string; work: { kind: string; id: string }[]; deliveryStatus: string; lastError?: string; createdAt: string }[];
+}

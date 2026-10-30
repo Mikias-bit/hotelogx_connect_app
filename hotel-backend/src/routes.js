@@ -1,4 +1,5 @@
 import reportRoutes from './modules/reports/reportRoutes.js';
+import maintenanceRoutes from './modules/maintenance/maintenanceRoutes.js';
 import lostFoundRoutes from './modules/lost-found/lostFoundRoutes.js';
 import operationsRoutes from './modules/reports/operationsRoutes.js';
 import { gmailPushHandler, gmailWorkerRouter, gmailManagerRouter } from './modules/email/gmail/gmailRoutes.js';
@@ -55,6 +56,7 @@ router.use('/reports', reportRoutes);
 router.use('/operations', operationsRoutes);
 router.use('/tasks', tasksRoutes);
 router.use('/issues', issuesRoutes);
+router.use('/maintenance-operations', maintenanceRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/manager', managerRoutes);
 router.use('/upsells', upsellsRoutes);

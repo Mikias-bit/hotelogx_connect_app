@@ -846,31 +846,7 @@ export async function setIssueStatus(issueId: string, status: Issue["status"], n
       issues: s.issues.map((i) => (i.id === issueId ? { ...i, ...updated } : i)),
     }));
 
-    // If completed: backend transaction already set Room→Dirty and created HK task.
-    // Sync local room state from backend response so all modules see the change.
-    if (status === "Completed") {
-      set((s) => ({
-        rooms: s.rooms.map((r) =>
-          r.number === issue.room
-            ? { ...r, status: "Dirty" as RoomStatus, updatedAt: clockNow(), note: "Recheck after maintenance" }
-            : r,
-        ),
-        // Mark local Maintenance tasks for this room as Completed
-        tasks: s.tasks.map((t) =>
-          t.room === issue.room && t.department === "Maintenance" && t.status !== "Completed"
-            ? { ...t, status: "Completed" as TaskStatus, trail: [...t.trail, { at: clockNow(), text: `${issueId} completed`, via: "whatsapp" as const }] }
-            : t,
-        ),
-      }));
-      pushActivity({
-        kind: "maintenance",
-        text: `${issueId} completed — Room ${issue.room} back for HK recheck`,
-        meta: "HK re-inspect task created",
-      });
-      toast(`${issueId} completed`, "good", `Room ${issue.room} sent back to housekeeping for a recheck`);
-      return;
-    }
-
+    window.dispatchEvent(new Event('hotelogx:maintenance-updated'));
     pushActivity({ kind: "maintenance", text: `${issueId} — ${status}`, meta: issue.room });
     toast(`${issueId} — ${status}`, status === "Escalated" ? "urgent" : "attend", note);
   } catch (err) {
@@ -888,7 +864,7 @@ export async function assignIssue(issueId: string, assignee: string) {
     set((s) => ({
       issues: s.issues.map((i) => (i.id === issueId ? { ...i, ...updated } : i)),
     }));
-    toast(`${issueId} assigned to ${assignee}`, "good", "WhatsApp ticket delivered");
+    toast(`${issueId} assigned to ${assignee}`, "good");
   } catch (err) {
     toast(`Could not assign ${issueId}`, "urgent", "Check your connection and try again");
     console.error("assignIssue failed:", err);

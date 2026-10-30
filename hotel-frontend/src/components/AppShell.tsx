@@ -51,6 +51,7 @@ const navByRole: Record<Role, NavItem[]> = {
   ],
   maintenance: [
     { to: "/maintenance", label: "Dashboard", icon: Gauge },
+    { to: "/maintenance/assignments", label: "Assignments", icon: ClipboardList },
     { to: "/maintenance/issues", label: "Issues", icon: Wrench },
     { to: "/maintenance/tasks", label: "Tasks", icon: ClipboardList },
   ],

@@ -24,6 +24,7 @@ import { Route as ManagerLostFoundRouteImport } from './routes/manager.lost-foun
 import { Route as ManagerConversationsRouteImport } from './routes/manager.conversations'
 import { Route as MaintenanceTasksRouteImport } from './routes/maintenance.tasks'
 import { Route as MaintenanceIssuesRouteImport } from './routes/maintenance.issues'
+import { Route as MaintenanceAssignmentsRouteImport } from './routes/maintenance.assignments'
 import { Route as HousekeepingTasksRouteImport } from './routes/housekeeping.tasks'
 import { Route as HousekeepingRoomsRouteImport } from './routes/housekeeping.rooms'
 import { Route as HousekeepingReportsRouteImport } from './routes/housekeeping.reports'
@@ -108,6 +109,11 @@ const MaintenanceIssuesRoute = MaintenanceIssuesRouteImport.update({
   path: '/maintenance/issues',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MaintenanceAssignmentsRoute = MaintenanceAssignmentsRouteImport.update({
+  id: '/maintenance/assignments',
+  path: '/maintenance/assignments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HousekeepingTasksRoute = HousekeepingTasksRouteImport.update({
   id: '/housekeeping/tasks',
   path: '/housekeeping/tasks',
@@ -162,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
+  '/maintenance/assignments': typeof MaintenanceAssignmentsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
+  '/maintenance/assignments': typeof MaintenanceAssignmentsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
+  '/maintenance/assignments': typeof MaintenanceAssignmentsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
+    | '/maintenance/assignments'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
+    | '/maintenance/assignments'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
+    | '/maintenance/assignments'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
@@ -316,6 +328,7 @@ export interface RootRouteChildren {
   HousekeepingReportsRoute: typeof HousekeepingReportsRoute
   HousekeepingRoomsRoute: typeof HousekeepingRoomsRoute
   HousekeepingTasksRoute: typeof HousekeepingTasksRoute
+  MaintenanceAssignmentsRoute: typeof MaintenanceAssignmentsRoute
   MaintenanceIssuesRoute: typeof MaintenanceIssuesRoute
   MaintenanceTasksRoute: typeof MaintenanceTasksRoute
   ManagerConversationsRoute: typeof ManagerConversationsRoute
@@ -437,6 +450,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MaintenanceIssuesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/maintenance/assignments': {
+      id: '/maintenance/assignments'
+      path: '/maintenance/assignments'
+      fullPath: '/maintenance/assignments'
+      preLoaderRoute: typeof MaintenanceAssignmentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/housekeeping/tasks': {
       id: '/housekeeping/tasks'
       path: '/housekeeping/tasks'
@@ -508,6 +528,7 @@ const rootRouteChildren: RootRouteChildren = {
   HousekeepingReportsRoute: HousekeepingReportsRoute,
   HousekeepingRoomsRoute: HousekeepingRoomsRoute,
   HousekeepingTasksRoute: HousekeepingTasksRoute,
+  MaintenanceAssignmentsRoute: MaintenanceAssignmentsRoute,
   MaintenanceIssuesRoute: MaintenanceIssuesRoute,
   MaintenanceTasksRoute: MaintenanceTasksRoute,
   ManagerConversationsRoute: ManagerConversationsRoute,

@@ -206,6 +206,15 @@ model Task {
   conversationId String?
   trail          TaskTrail[]
 
+  assignedWorkerId String?
+  assignmentId     String?
+  assignedAt       DateTime?
+  acceptedAt       DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  problemNote      String? @db.Text
+  version          Int @default(0)
+
   @@index([hotelId, status])
   @@index([hotelId, createdAt])
   @@index([hotelId])
@@ -236,6 +245,15 @@ model Issue {
   status       String        @default("Reported")
   outOfService Boolean       @default(false)
   updates      IssueUpdate[]
+
+  assignedWorkerId String?
+  assignmentId     String?
+  assignedAt       DateTime?
+  acceptedAt       DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  problemNote      String? @db.Text
+  version          Int @default(0)
 
   @@index([hotelId, status])
   @@index([hotelId, createdAt])
@@ -830,4 +848,40 @@ model PmsUpsellOffer {
   updatedAt DateTime @default(now()) @updatedAt
   @@index([hotelId, status])
   @@index([conversationId, createdAt])
+}
+
+model MaintenanceWorker {
+  id String @id @default(uuid())
+  hotelId String
+  name String
+  phone String
+  whatsappEnabled Boolean @default(false)
+  active Boolean @default(true)
+  language String @default("en")
+  lastInboundAt DateTime?
+  pendingProblemRef String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([hotelId, phone])
+}
+
+model MaintenanceAssignment {
+  id String @id @default(uuid())
+  hotelId String
+  workerId String
+  work Json
+  requestKey String
+  deliveryStatus String @default("pending")
+  messageId String?
+  lastError String?
+  createdBy String
+  createdAt DateTime @default(now())
+  @@unique([hotelId, requestKey])
+  @@index([hotelId, createdAt])
+}
+
+model MaintenanceConfig {
+  hotelId String @id
+  templateName String?
+  templateLanguage String @default("en_US")
 }
