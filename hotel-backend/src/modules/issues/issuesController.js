@@ -25,6 +25,7 @@ function formatIssue(i) {
   return {
     assignedWorkerId: i.assignedWorkerId, assignmentId: i.assignmentId, assignedAt: i.assignedAt,
     acceptedAt: i.acceptedAt, startedAt: i.startedAt, completedAt: i.completedAt, problemNote: i.problemNote, version: i.version,
+    followUpTaskId: i.followUpTaskId,
     id: i.id,
     room: i.room,
     title: i.title,
@@ -49,7 +50,7 @@ export const getIssues = async (req, res, next) => {
     const hotelId = req.user?.hotelId;
     if (!hotelId) return errorResponse(res, 'Authentication and hotel context required', 401);
     const { status, room } = req.query;
-    const where = { hotelId };
+    const where = { hotelId, status: { not: 'Duplicate' } };
     if (status) {
       if (status.toLowerCase() === 'open' || status.toLowerCase() === 'reported') {
         where.status = { in: ['Reported', 'Open'] };
@@ -104,6 +105,7 @@ export const createIssue = async (req, res, next) => {
 
     // All writes in a single transaction
     const issue = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${hotelId}`}, 0))`;
       const created = await tx.issue.create({
         data: {
           id,
@@ -125,14 +127,6 @@ export const createIssue = async (req, res, next) => {
         include: { updates: true },
       });
 
-      // If urgent or outOfService, set room to Maintenance
-      if (isOos) {
-        await tx.room.updateMany({
-          where: { number: room, hotelId },
-          data: { status: 'Maintenance', updatedAt: at },
-        });
-      }
-
       // Activity log
       await tx.activityItem.create({
         data: {
@@ -149,6 +143,7 @@ export const createIssue = async (req, res, next) => {
     });
 
     realtimeService.broadcastToHotel(hotelId, 'maintenance:updated', { refresh: true });
+    realtimeService.broadcastToHotel(hotelId, 'readiness:updated', { refresh: true });
     return successResponse(res, formatIssue(issue), 'Issue created successfully', 201);
   } catch (error) {
     next(error);

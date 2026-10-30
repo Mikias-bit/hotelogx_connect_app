@@ -49,7 +49,7 @@ function FrontOfficeTasks() {
             <h1 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">What the desk owes guests today</h1>
             <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
               Created mostly by the AI from guest messages. When housekeeping or maintenance finish something on WhatsApp, it
-              lands here and the guest is told automatically.
+              updates task progress here. Room readiness requires inspection and Front Office approval.
             </p>
           </div>
           <HousekeepingPlanButton />
@@ -124,8 +124,7 @@ function FrontOfficeTasks() {
             </ul>
           </Card>
           <p className="mt-2 text-[11.5px] leading-snug text-ink-4">
-            Example: "Room 401 early arrival 13:00" was closed by Maria at 12:26 from her phone. The guest was told the room was
-            ready without anyone at the desk typing a word.
+            Use Room readiness to review inspections and restrictions before approving a room for an arrival.
           </p>
         </section>
       </div>

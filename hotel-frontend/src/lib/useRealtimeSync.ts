@@ -75,6 +75,7 @@ export function useRealtimeSync(hotelId: string = "hotel-mercier") {
           if (isMounted && rows && localStorage.getItem('token') === currentToken) store.setState(s => ({ ...s, waThreads: rows }));
         });
       });
+      for (const event of ['readiness:updated', 'pms:synced', 'pms:room_updated', 'pms:reservation_updated']) es.addEventListener(event, () => { if (localStorage.getItem('token') === token) window.dispatchEvent(new Event('hotelogx:readiness-updated')); });
       es.addEventListener('maintenance:updated', () => {
         if (localStorage.getItem('token') !== token) return;
         window.dispatchEvent(new Event('hotelogx:maintenance-updated'));

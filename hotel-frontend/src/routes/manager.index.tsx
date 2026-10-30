@@ -1,3 +1,4 @@
+import { useReadiness } from '@/lib/useReadiness';
 import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -35,6 +36,7 @@ export const Route = createFileRoute("/manager/")({
 function ManagerDashboard() {
   const user = useCurrentUser();
   const operations = useOperations();
+  const readiness = useReadiness();
   const [detail, setDetail] = useState<'vip' | 'departure_bills' | null>(null);
   const navigate = useNavigate();
   const escalations = useApp(selectors.escalations).filter(c => c.escalation?.kind !== 'reservation_verification');
@@ -71,7 +73,7 @@ function ManagerDashboard() {
   }, []);
 
   const roomsToClean = rooms.filter((r) => r.status === "Dirty").length;
-  const roomsReady = rooms.filter((r) => r.status === "Clean" || r.status === "Inspected").length;
+  const roomsReady = readiness.error || readiness.loading ? "?" : readiness.rooms.filter(r => r.ready).length;
   const outOfService = rooms.filter((r) => r.status === "Blocked" || r.status === "Maintenance").length;
   const aiHandled = conversations.filter((c) => c.aiStatus === "ai-handling" || c.aiStatus === "resolved").length;
 

@@ -152,6 +152,8 @@ export interface Conversation {
 }
 
 export interface Task {
+  sourceIssueId?: string;
+  linkedRepairs?: { id: string; title: string; status: string; followUpTaskId?: string }[];
   location?: string;
   planVersion?: number;
   planData?: Record<string, string>;
@@ -488,6 +490,8 @@ export interface MewsFolio {
 
 
 export interface MaintenanceWork {
+  linkedHousekeepingTaskIds?: string[];
+  followUpTaskId?: string;
   kind: 'issue' | 'task'; id: string; title: string; room?: string; detail?: string;
   priority: Priority; status: string; createdAt: string; assignee?: string;
   assignedWorkerId?: string; assignmentId?: string; assignedAt?: string; acceptedAt?: string;

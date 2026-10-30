@@ -1,3 +1,4 @@
+import { repairStatusChanged } from '../reports/housekeepingRepairs.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export function fail(message, status = 400) { throw Object.assign(new Error(message), { status }); }
@@ -11,11 +12,14 @@ const include = kind => kind === 'issue' ? { updates: { orderBy: { id: 'asc' } }
 const requireManager = user => { if (!user?.hotelId || !['manager', 'maintenance'].includes(user.role)) fail('Maintenance manager access required', 403); };
 
 export function createMaintenanceOperations({ db, send, broadcast = () => {}, env = process.env, now = () => new Date() }) {
-  const publish = hotelId => broadcast(hotelId, 'maintenance:updated', { refresh: true });
-  const lock = (tx, hotelId) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`maintenance:${hotelId}`}, 0))`;
+  const publish = hotelId => { for (const event of ['maintenance:updated', 'reports:updated', 'readiness:updated']) broadcast(hotelId, event, { refresh: true }); };
+  const lock = async (tx, hotelId) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${hotelId}`}, 0))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`maintenance:${hotelId}`}, 0))`;
+  };
   async function work(database, hotelId) {
     const [issues, tasks] = await Promise.all(kinds.map(kind => database[kind].findMany({ where: scope(hotelId, kind), include: include(kind) })));
-    return [...issues.map(row => ({ ...row, kind: 'issue', status: openStatus(row.status) })), ...tasks.map(row => ({ ...row, kind: 'task', status: openStatus(row.status) }))]
+    return [...issues.filter(i => i.status !== 'Duplicate').map(row => ({ ...row, kind: 'issue', status: openStatus(row.status) })), ...tasks.map(row => ({ ...row, kind: 'task', status: openStatus(row.status) }))]
       .sort((a, b) => (rank[a.priority] ?? 2) - (rank[b.priority] ?? 2) || a.id.localeCompare(b.id));
   }
   async function read(user) {
@@ -25,7 +29,8 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       db.maintenanceAssignment.findMany({ where: { hotelId: user.hotelId }, orderBy: { createdAt: 'desc' }, take: 30 }),
       db.maintenanceConfig.findUnique({ where: { hotelId: user.hotelId } }),
     ]);
-    return { work: rows.map(row => ({ ...row, assignee: workers.find(w => w.id === row.assignedWorkerId)?.name || row.assignee })),
+    const links = await db.housekeepingMaintenanceLink.findMany({ where: { hotelId: user.hotelId, active: true } });
+    return { work: rows.map(row => ({ ...row, linkedHousekeepingTaskIds: links.filter(l => l.issueId === row.id).map(l => l.reportTaskId), assignee: workers.find(w => w.id === row.assignedWorkerId)?.name || row.assignee })),
       workers: workers.map(({ lastInboundAt, pendingProblemRef, ...worker }) => worker), assignments,
       config: config || { templateName: '', templateLanguage: 'en_US' } };
   }
@@ -120,7 +125,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       const rows = [];
       for (const selection of selected) {
         const row = await tx[selection.kind].findFirst({ where: scope(user.hotelId, selection.kind, { id: selection.id }) });
-        if (!row || row.version !== selection.version || ['Completed', 'In Progress'].includes(row.status)) fail('Tasks changed or are started/completed. Refresh before assigning.', 409);
+        if (!row || row.version !== selection.version || ['Completed', 'In Progress', 'Duplicate'].includes(row.status)) fail('Tasks changed or are started/completed. Refresh before assigning.', 409);
         rows.push({ ...row, kind: selection.kind });
       }
       const assignment = await tx.maintenanceAssignment.create({ data: { hotelId: user.hotelId, workerId, work: selected, requestKey, createdBy: user.id } });
@@ -144,11 +149,12 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       const row = await tx[kind].findFirst({ where: scope(user.hotelId, kind, { id }) });
       if (!row) fail('Maintenance task not found', 404);
       if (version !== undefined && version !== row.version) fail('Task changed. Refresh before updating.', 409);
-      const data = { status: storedStatus(kind, status), completedAt: status === 'Completed' ? now() : null, version: { increment: 1 },
+      const data = { ...(kind === 'issue' && row.status === 'Completed' && status !== 'Completed' ? { repairCycle: { increment: 1 }, followUpTaskId: null } : {}), status: storedStatus(kind, status), completedAt: status === 'Completed' ? now() : null, version: { increment: 1 },
         ...(status === 'In Progress' && !row.startedAt ? { startedAt: now() } : {}),
         ...(note ? { problemNote: note.trim() } : {}),
         ...(status === 'Open' ? { assignee: null, assignedWorkerId: null, assignmentId: null, assignedAt: null, acceptedAt: null, startedAt: null, problemNote: null } : {}) };
       await tx[kind].updateMany({ where: scope(user.hotelId, kind, { id, version: row.version }), data });
+      if (kind === 'issue') await repairStatusChanged(tx, row, status, user.id);
       await audit(tx, { ...row, kind }, user.id, `Staff marked ${status}${note ? ': ' + note : ''}`, 'dashboard');
       return tx[kind].findFirst({ where: scope(user.hotelId, kind, { id }), include: include(kind) });
     });
@@ -196,6 +202,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
             const updated = await tx[row.kind].updateMany({ where: scope(worker.hotelId, row.kind, { id: row.id, version: row.version, assignedWorkerId: worker.id, assignmentId: action.assignmentId }), data: values });
             if (!updated.count) continue;
             changed++;
+            if (row.kind === 'issue') await repairStatusChanged(tx, row, status, worker.id);
             await audit(tx, row, worker.id, `WhatsApp: ${status} by ${worker.name}`, 'whatsapp');
             if (['parts', 'help'].includes(action.action)) await tx.maintenanceWorker.update({ where: { id: worker.id }, data: { pendingProblemRef: `${row.assignmentId}|${ref(row)}` } });
           }

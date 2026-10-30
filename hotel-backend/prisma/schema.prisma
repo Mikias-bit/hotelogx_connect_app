@@ -244,6 +244,10 @@ model Issue {
   assignee     String?
   status       String        @default("Reported")
   outOfService Boolean       @default(false)
+  faultKey String?
+  housekeepingReported Boolean @default(false)
+  repairCycle Int @default(0)
+  followUpTaskId String?
   updates      IssueUpdate[]
 
   assignedWorkerId String?
@@ -258,6 +262,48 @@ model Issue {
   @@index([hotelId, status])
   @@index([hotelId, createdAt])
   @@index([hotelId])
+}
+
+model RoomReadiness {
+  hotelId String
+  roomNumber String
+  occupied Boolean @default(false)
+  needsCleaning Boolean @default(false)
+  dnd Boolean @default(false)
+  maintenanceBlocked Boolean @default(false)
+  otherRestriction String @default("")
+  cleaningConfirmedAt DateTime?
+  inspectedAt DateTime?
+  inspectedBy String?
+  inspectionHash String?
+  releasedAt DateTime?
+  releasedBy String?
+  releaseHash String?
+  version Int @default(0)
+  updatedAt DateTime @updatedAt
+  @@id([hotelId, roomNumber])
+}
+
+model RoomReadinessEvent {
+  id String @id @default(uuid())
+  hotelId String
+  roomNumber String
+  actor String
+  action String
+  note String
+  at DateTime @default(now())
+  @@index([hotelId, roomNumber, at])
+}
+
+model HousekeepingMaintenanceLink {
+  id String @id @default(uuid())
+  hotelId String
+  reportTaskId String
+  issueId String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@unique([hotelId, reportTaskId, issueId])
+  @@index([hotelId, issueId])
 }
 
 model IssueUpdate {

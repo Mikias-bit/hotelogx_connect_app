@@ -5,6 +5,12 @@ export const planToken = row => row.planVersion ? hash([row.contentHash, row.pla
 export const planRef = row => `${row.id}~${row.planVersion || 0}`;
 export const batchRef = rows => `all~${hash(rows.map(r => [r.id, r.planVersion || 0]).sort((a, b) => a[0].localeCompare(b[0]))).slice(0, 16)}`;
 export const planLocation = row => { const d = planData(row); return d.location || `Room ${d.room}`; };
+export async function invalidateTaskRoomApprovals(tx, hotelId, rows) {
+  const rooms = [...new Set(rows.map(r => planData(r).room).filter(Boolean))];
+  if (rooms.length) await tx.roomReadiness.updateMany({ where: { hotelId, roomNumber: { in: rooms } }, data: {
+    inspectedAt: null, inspectedBy: null, inspectionHash: null, releasedAt: null, releasedBy: null, releaseHash: null, version: { increment: 1 },
+  } });
+}
 export const planPriority = row => planData(row).priority || (['departure_clean_required', 'late_checkout', 'room_move'].includes(planData(row).task) ? 'High' : 'Normal');
 export const planOrder = (a, b) => ({ Urgent: 0, High: 1, Normal: 2 }[planPriority(a)] - { Urgent: 0, High: 1, Normal: 2 }[planPriority(b)]) || ((a.dueAt ? +new Date(a.dueAt) : Infinity) - (b.dueAt ? +new Date(b.dueAt) : Infinity)) || a.id.localeCompare(b.id);
 const fail = message => { throw Object.assign(new Error(message), { status: 400 }); };
@@ -38,17 +44,20 @@ export async function reconcileHousekeeping(tx, report, existing, hotelId) {
     if (!old) {
       const related = protectedRooms.has(data.room);
       await tx.reportTask.create({ data: { id, ...source, data, sourceReviewRequired: related, status: review?.status === 'done' ? 'Completed' : 'New' } });
+      await invalidateTaskRoomApprovals(tx, hotelId, [{ data }]);
     } else if (old.contentHash !== row.contentHash || !old.sourcePresent) {
       const preserve = old.assignedWorkerId || old.status !== 'New' || Object.keys(old.overrides || {}).length;
       await tx.reportTask.update({ where: { id }, data: { ...source, sourcePresent: true, active: old.status !== 'Cancelled', planVersion: { increment: 1 },
         ...(preserve ? { pendingSourceData: data, sourceReviewRequired: !['Completed', 'Cancelled'].includes(old.status) } : { data, sourceReviewRequired: false }) } });
       await tx.reportTaskEvent.create({ data: { hotelId, taskId: id, actor: 'report-engine', text: preserve ? 'Morning plan changed. Execution and assignment retained; review the new instructions before continuing open work.' : 'Morning plan instructions updated before assignment.' } });
+      await invalidateTaskRoomApprovals(tx, hotelId, [old, { data }]);
     }
   }
   for (const old of existing.filter(r => r.origin !== 'staff' && r.sourcePresent && !ids.has(r.id))) {
     const preserve = old.assignedWorkerId || old.status !== 'New' || Object.keys(old.overrides || {}).length;
     await tx.reportTask.update({ where: { id: old.id }, data: { sourcePresent: false, active: Boolean(preserve && old.status !== 'Cancelled'), sourceReviewRequired: Boolean(preserve && !['Completed', 'Cancelled'].includes(old.status)), planVersion: { increment: 1 } } });
     await tx.reportTaskEvent.create({ data: { hotelId, taskId: old.id, actor: 'report-engine', text: 'Task removed from the morning plan. Existing work and assignment history retained.' } });
+    await invalidateTaskRoomApprovals(tx, hotelId, [old]);
   }
   // Yesterday's records remain stored with their history but are not today's assignments.
   await tx.reportTask.updateMany({ where: { hotelId, kind: 'housekeeping', origin: 'report', reportDate: { lt: report.reportDate }, active: true }, data: { active: false } });

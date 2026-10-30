@@ -1,3 +1,4 @@
+import { invalidateRoomReadiness, operationsLock } from '../rooms/readinessService.js';
 import { encryptToken, decryptToken } from '../../utils/tokenCrypto.js';
 import { bulkUpsert } from '../../utils/bulkUpsert.js';
 import { prisma } from '../../config/database.js';
@@ -472,7 +473,13 @@ export const pmsService = {
           return [roomNumber, room.Id || null, targetHotelId, Number(room.FloorNumber) || 1, roomState, cleaningType, guestStatus, arrivalTime, priority, assignedCleaner, vip, note, timeStr];
         });
 
-        await bulkUpsert(prisma, "Room", ["number", "mewsId", "hotelId", "floor", "status", "cleaningType", "guestStatus", "arrivalTime", "priority", "cleaner", "vip", "note", "updatedAt"], roomTuples, ["hotelId", "number"], ["floor", "status", "cleaningType", "guestStatus", "arrivalTime", "priority", "cleaner", "vip", "note", "updatedAt"]);
+        await prisma.$transaction(async tx => {
+          await operationsLock(tx, targetHotelId);
+          const before = await tx.room.findMany({ where: { hotelId: targetHotelId }, select: { number: true, status: true, guestStatus: true, arrivalTime: true } });
+        await bulkUpsert(tx, "Room", ["number", "mewsId", "hotelId", "floor", "status", "cleaningType", "guestStatus", "arrivalTime", "priority", "cleaner", "vip", "note", "updatedAt"], roomTuples, ["hotelId", "number"], ["floor", "status", "cleaningType", "guestStatus", "arrivalTime", "priority", "cleaner", "vip", "note", "updatedAt"]);
+          const changed = roomTuples.filter(tuple => { const old = before.find(r => r.number === tuple[0]); return old && (old.status !== tuple[4] || old.guestStatus !== tuple[6] || old.arrivalTime !== tuple[7]); }).map(tuple => tuple[0]);
+          await invalidateRoomReadiness(tx, targetHotelId, changed);
+        }, { timeout: 30000 });
         roomsSynced = roomList.length;
 
         // Query 4: Bulk Tasks for Dirty Rooms
@@ -723,10 +730,11 @@ export const pmsService = {
         const mappedRoomStatus = mapMewsRoomState(rawStatus);
 
         if (roomNum) {
-          await prisma.room.updateMany({
-            where: { hotelId: targetHotelId, number: roomNum },
-            data: { status: mappedRoomStatus, updatedAt: timeStr },
-          }).catch(() => { });
+          await prisma.$transaction(async tx => {
+            await operationsLock(tx, targetHotelId);
+            await tx.room.updateMany({ where: { hotelId: targetHotelId, number: roomNum }, data: { status: mappedRoomStatus, updatedAt: timeStr } });
+            await invalidateRoomReadiness(tx, targetHotelId, [roomNum]);
+          });
 
           const actId = `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
           const actText = `Room ${roomNum} status updated to ${mappedRoomStatus} via Mews PMS`;
@@ -828,10 +836,11 @@ export const pmsService = {
           }
 
           if (Object.keys(roomUpdate).length > 0) {
-            await prisma.room.updateMany({
-              where: { hotelId: targetHotelId, number: roomNum },
-              data: roomUpdate,
-            }).catch(() => { });
+            await prisma.$transaction(async tx => {
+              await operationsLock(tx, targetHotelId);
+              await tx.room.updateMany({ where: { hotelId: targetHotelId, number: roomNum }, data: roomUpdate });
+              await invalidateRoomReadiness(tx, targetHotelId, [roomNum]);
+            });
           }
 
           // Create Activity Item

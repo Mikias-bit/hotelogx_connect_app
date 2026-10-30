@@ -1,3 +1,4 @@
+import { beginHousekeepingRepair, describeHousekeepingRepair } from './housekeepingRepairs.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readReports } from './reportService.js';
 import { planData, planToken, planRef, batchRef, planLocation, planPriority, planOrder } from './housekeepingPlan.js';
@@ -5,7 +6,7 @@ import { saveHousekeepingChange, notifyHousekeepingChange } from './housekeeping
 import { assertCurrentSource, failOperation, hkLabels, syncOperations } from './reportOperations.js';
 
 export function createHousekeepingOperations({ db, send, broadcast = () => {}, env = process.env, now = () => new Date() }) {
-  const publish = hotelId => broadcast(hotelId, 'reports:updated', { refresh: true });
+  const publish = hotelId => { for (const event of ['reports:updated', 'maintenance:updated', 'readiness:updated']) broadcast(hotelId, event, { refresh: true }); };
   function signature(worker, value) {
     const key = env.PMS_MCP_CONTEXT_KEY;
     if (!key || key.length < 32) throw new Error('Operational action signing is not configured');
@@ -139,15 +140,21 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
               if (updated.count) {
                 changedCount++;
                 await tx.reportTaskEvent.create({ data: { hotelId: worker.hotelId, taskId: row.id, actor: worker.id, text: `WhatsApp: ${target}${target === 'Problem' ? ` (${action.action})` : ''}` } });
+                if (action.action === 'maintenance') await beginHousekeepingRepair(tx, row, worker.id);
                 if (target === 'Problem') await tx.housekeepingWorker.update({ where: { id: worker.id }, data: { pendingProblemTaskId: row.id } });
               }
             }
             if (target === 'Accepted' && changedCount) await tx.housekeepingAssignment.updateMany({ where: { id: action.assignmentId, hotelId: worker.hotelId, workerId: worker.id }, data: { deliveryStatus: 'accepted', lastError: null } });
           });
-          if (target === 'Problem' && changedCount) response = { text: 'Problem recorded for the housekeeping manager. Please reply with a short description, or reply TASKS to continue.' };
+          if (target === 'Problem' && changedCount) response = { text: action.action === 'maintenance' ? 'Maintenance ticket created and linked to this task. Reply with a short fault description for the technician, or TASKS to continue.' : 'Problem recorded for the housekeeping manager. Please reply with a short description, or reply TASKS to continue.' };
         }
       } else if (worker.pendingProblemTaskId && message.text?.body && !/^(tasks|housekeeping)$/i.test(message.text.body.trim())) {
         await db.$transaction(async tx => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${worker.hotelId}`}, 0))`;
+          const currentWorker = await tx.housekeepingWorker.findFirst({ where: { id: worker.id, hotelId: worker.hotelId, phone: worker.phone, active: true, whatsappEnabled: true } });
+          if (!currentWorker || currentWorker.pendingProblemTaskId !== worker.pendingProblemTaskId) failOperation('Worker or pending task changed', 409);
+          const problemTask = await tx.reportTask.findFirst({ where: { id: worker.pendingProblemTaskId, hotelId: worker.hotelId, assignedWorkerId: worker.id, active: true, status: 'Problem' } });
+          if (problemTask?.problemType === 'maintenance') { const issue = await describeHousekeepingRepair(tx, problemTask, message.text.body.slice(0, 2000), worker.id); response = { text: `Maintenance report saved. Linked ticket: ${issue.id}. Reply TASKS for your remaining work.` }; }
           await tx.reportTask.updateMany({ where: { id: worker.pendingProblemTaskId, hotelId: worker.hotelId, assignedWorkerId: worker.id, active: true, status: 'Problem' }, data: { problemNote: message.text.body.slice(0, 2000) } });
           await tx.housekeepingWorker.update({ where: { id: worker.id }, data: { pendingProblemTaskId: null } });
         });
@@ -167,5 +174,21 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
     const notification = await notifyHousekeepingChange({ db, send, now }, saved);
     publish(user.hotelId); return notification;
   }
-  return { assign, change, handle, button, parse, packet };
+  async function reportRepair(user, id, input = {}) {
+    if (!['manager', 'housekeeping', 'front-office'].includes(user.role)) failOperation('Housekeeping report access required', 403);
+    if (typeof input.note !== 'string' || !input.note.trim() || input.note.length > 2000) failOperation('Describe the maintenance fault');
+    const snapshot = await syncOperations(db, user);
+    const issue = await db.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${user.hotelId}`}, 0))`;
+      const task = await tx.reportTask.findFirst({ where: { id, hotelId: user.hotelId, kind: 'housekeeping', active: true, reportDate: snapshot.today } });
+      if (!task) failOperation('Housekeeping task not found', 404);
+      if (planToken(task) !== input.reportContentHash) failOperation('Task changed; refresh first', 409);
+      if (task.status === 'Completed') failOperation('Completed work is retained. Add a new task to report a new fault.', 409);
+      const result = await describeHousekeepingRepair(tx, task, input.note.trim(), user.id);
+      await tx.reportTask.update({ where: { id }, data: { status: 'Problem', problemType: 'maintenance', problemNote: input.note.trim(), planVersion: { increment: 1 } } });
+      return { id: result.id };
+    });
+    publish(user.hotelId); return issue;
+  }
+  return { assign, change, reportRepair, handle, button, parse, packet };
 }

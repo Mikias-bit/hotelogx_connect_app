@@ -58,7 +58,7 @@ function MaintenanceAssignmentBoard() {
             <td className="min-w-44 border-b border-line-soft p-2"><strong>{row.room || 'General'}</strong><p>{row.title}</p><p className="text-xs text-ink-4">{row.kind === 'issue' ? 'Issue' : 'Follow-up task'} · {row.priority}</p></td>
             <td className="border-b border-line-soft p-2"><Badge tone={statusTone(row.status)}>{row.status}</Badge></td>
             <td className="min-w-40 border-b border-line-soft p-2">{row.assignee || 'Unassigned'}{([['assignedAt', 'Assigned'], ['acceptedAt', 'Accepted'], ['startedAt', 'Started'], ['completedAt', 'Completed']] as const).map(([field, label]) => row[field] && <p key={field} className="text-xs text-ink-3">{label} {new Date(row[field]!).toLocaleString()}</p>)}</td>
-            <td className="min-w-44 max-w-sm whitespace-pre-wrap border-b border-line-soft p-2">{row.detail}{row.problemNote && <p className="mt-1 text-attend">{row.problemNote}</p>}</td>
+            <td className="min-w-44 max-w-sm whitespace-pre-wrap border-b border-line-soft p-2">{row.detail}{row.linkedHousekeepingTaskIds?.length ? <p className="mt-2 text-xs">Linked housekeeping: {row.linkedHousekeepingTaskIds.join(", ")}</p> : null}{row.followUpTaskId && <p className="mt-2 text-xs">Housekeeping follow-up: {row.followUpTaskId}. Room inspection and release are still required.</p>}{row.problemNote && <p className="mt-1 text-attend">{row.problemNote}</p>}</td>
             <td className="border-b border-line-soft p-2"><Button size="sm" variant="outline" disabled={busy || !!error} onClick={() => void execute(async () => {
               const status = row.status === 'Completed' ? 'Open' : 'Completed';
               await api.updateMaintenance(row.kind, row.id, { version: row.version, status });

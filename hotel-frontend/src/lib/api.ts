@@ -1,3 +1,4 @@
+import type { ReadyRoom } from './useReadiness';
 import type { MaintenanceData, MaintenanceWorker, LostFoundInput, LostFoundItem, LostFoundList } from "./types";
 
 const isLocalBrowser = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -19,7 +20,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -248,6 +249,9 @@ export const api = {
 
   // Manager & Health
   getDailyReports: (date?: string) => request<any>(`/reports${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  getRoomReadiness: () => request<{ rooms: ReadyRoom[] }>('/room-readiness'),
+  updateRoomReadiness: (room: string, input: unknown) => request(`/room-readiness/${encodeURIComponent(room)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  reportHousekeepingRepair: (id: string, input: unknown) => request<{ id: string }>(`/operations/tasks/${encodeURIComponent(id)}/maintenance`, { method: 'POST', body: JSON.stringify(input) }),
   getOperations: () => request<any>('/operations'),
   changeHousekeepingPlan: (id: string | undefined, data: unknown) => request<{ deliveryStatus: string; lastError?: string }>(`/operations/housekeeping/changes${id ? '/' + encodeURIComponent(id) : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) }),
   updateOperation: (id: string, data: any) => request<any>(`/operations/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),

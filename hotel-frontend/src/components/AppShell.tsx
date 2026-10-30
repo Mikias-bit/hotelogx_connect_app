@@ -33,6 +33,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/manager", label: "Dashboard", icon: Gauge },
     { to: "/manager/conversations", label: "Conversations", icon: MessageSquare },
     { to: "/manager/tasks", label: "Tasks", icon: ClipboardList },
+    { to: "/manager/rooms", label: "Room readiness", icon: BedDouble },
     { to: "/manager/lost-found", label: "Lost & Found", icon: Archive },
     { to: "/manager/upsells", label: "Upsells", icon: TrendingUp },
     { to: "/manager/settings", label: "Settings", icon: Settings },
@@ -41,6 +42,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/front-office", label: "Dashboard", icon: Gauge },
     { to: "/front-office/conversations", label: "Conversations", icon: MessageSquare },
     { to: "/front-office/tasks", label: "Tasks", icon: ClipboardList },
+    { to: "/front-office/rooms", label: "Room readiness", icon: BedDouble },
     { to: "/front-office/lost-found", label: "Lost & Found", icon: Archive },
   ],
   housekeeping: [

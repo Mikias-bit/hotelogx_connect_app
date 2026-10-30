@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { hash } from './reportService.js';
 import { syncOperations, failOperation } from './reportOperations.js';
-import { hotelTime, planData, planToken, planLocation } from './housekeepingPlan.js';
+import { hotelTime, planData, planToken, planLocation, invalidateTaskRoomApprovals } from './housekeepingPlan.js';
 
 export const changeRoles = ['manager', 'housekeeping', 'front-office'];
 export const changeTypes = ['departure_clean_required', 'stayover_clean', 'linen_change', 'towels', 'late_checkout', 'room_move', 'urgent_clean', 'delivery', 'public_area', 'baby_bed_requested', 'make_sofa_bed', 'other'];
@@ -54,6 +54,7 @@ export async function saveHousekeepingChange(db, user, id, input) {
       await tx.reportTask.create({ data: { id: taskId, hotelId: user.hotelId, kind: 'housekeeping', reportDate: snapshot.today, itemKey: taskId, origin: 'staff', data, contentHash: hash(data), sourceGeneratedAt: new Date(), planVersion, notBefore, dueAt } });
     }
     const worker = old?.assignedWorkerId ? await tx.housekeepingWorker.findFirst({ where: { id: old.assignedWorkerId, hotelId: user.hotelId } }) : null;
+    await invalidateTaskRoomApprovals(tx, user.hotelId, [...(old ? [old] : []), { data }]);
     if (worker?.pendingProblemTaskId === taskId) await tx.housekeepingWorker.update({ where: { id: worker.id }, data: { pendingProblemTaskId: null } });
     const details = { reason: input.reason.trim(), before: oldData, after: data, timezone, cancelled: input.cancel === true, sourceDecision: input.sourceDecision || null };
     const change = await tx.housekeepingPlanChange.create({ data: { hotelId: user.hotelId, taskId, requestKey: input.requestKey, requestHash, planVersion,

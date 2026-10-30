@@ -18,6 +18,7 @@ export function operationsRouter({ db = prisma, auth = authenticate, service = h
   router.get('/', run(req => readOperations(db, req.user)));
   router.post('/housekeeping/changes', run(req => service.change(req.user, null, req.body)));
   router.patch('/housekeeping/changes/:id', run(req => service.change(req.user, req.params.id, req.body)));
+  router.post('/tasks/:id/maintenance', run(req => service.reportRepair(req.user, req.params.id, req.body)));
   router.patch('/tasks/:id', run(async req => {
     const task = await updateReportTask(db, req.user, req.params.id, req.body);
     broadcast(req.user.hotelId, 'reports:updated', { refresh: true }); return task;

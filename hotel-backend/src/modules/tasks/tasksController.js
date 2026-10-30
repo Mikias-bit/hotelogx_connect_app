@@ -169,6 +169,7 @@ export const updateTaskStatus = async (req, res, next) => {
     const updated = await prisma.task.update({
       where: { id },
       data: {
+        version: { increment: 1 },
         status: status || existing.status,
         assignee: assignee !== undefined ? assignee : existing.assignee,
         trail: {

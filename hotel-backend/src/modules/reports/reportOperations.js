@@ -1,10 +1,12 @@
+import { assertNoOpenRepairs } from './housekeepingRepairs.js';
 import { readReports, allowedKinds, hash } from './reportService.js';
 import { planData, planToken, planPriority, reconcileHousekeeping } from './housekeepingPlan.js';
-export const hkLabels = { departure_clean_required: 'Departure clean', linen_change: 'Linen change', stayover_clean: 'Stayover clean', stayover_no_cleaning: 'No cleaning required', baby_bed_requested: 'Prepare baby bed', make_sofa_bed: 'Prepare sofa bed', late_checkout: 'Late checkout preparation', extension: 'Stay extension preparation', extension_with_room_change: 'Extension with room move', room_move: 'Room move', towels: 'Replace towels' };
+export const hkLabels = { post_repair_clean: 'Post-repair cleaning / check', departure_clean_required: 'Departure clean', linen_change: 'Linen change', stayover_clean: 'Stayover clean', stayover_no_cleaning: 'No cleaning required', baby_bed_requested: 'Prepare baby bed', make_sofa_bed: 'Prepare sofa bed', late_checkout: 'Late checkout preparation', extension: 'Stay extension preparation', extension_with_room_change: 'Extension with room move', room_move: 'Room move', towels: 'Replace towels' };
 export const failOperation = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 export const executionId = (hotelId, kind, date, key) => `rt-${hash([hotelId, kind, date, key])}`;
 export async function assertCurrentSource(tx, hotelId, rows, today) {
   if (rows.some(r => r.reportDate !== today || r.sourceReviewRequired)) failOperation('The plan needs staff review or belongs to another day. Refresh before continuing.', 409);
+  await assertNoOpenRepairs(tx, hotelId, rows);
   rows = rows.filter(r => r.origin !== 'staff');
   for (const kind of new Set(rows.map(row => row.kind))) {
     const latest = await tx.dailyReport.findFirst({ where: { hotelId, kind, reportDate: { lte: today } }, orderBy: [{ reportDate: 'desc' }, { generatedAt: 'desc' }, { receivedAt: 'desc' }] });
@@ -60,7 +62,7 @@ export function taskView(row, worker, today) {
     status: row.status === 'Accepted' ? 'Assigned' : row.status === 'Problem' ? 'Escalated' : row.status,
     executionStatus: row.status, assignee: worker?.name || undefined, assignedWorkerId: row.assignedWorkerId,
     createdAt: row.reportDate, source: row.origin === 'staff' ? 'Operational change' : 'Daily report', reportDate: row.reportDate, reportContentHash: planToken(row),
-    planVersion: row.planVersion, planData: d, sourceReviewRequired: row.sourceReviewRequired, sourcePresent: row.sourcePresent, pendingSourceData: row.pendingSourceData, notBefore: row.notBefore, dueAt: row.dueAt,
+    sourceIssueId: d.sourceIssueId, planVersion: row.planVersion, planData: d, sourceReviewRequired: row.sourceReviewRequired, sourcePresent: row.sourcePresent, pendingSourceData: row.pendingSourceData, notBefore: row.notBefore, dueAt: row.dueAt,
     stale: row.reportDate !== today, trail: [], assignedAt: row.assignedAt, acceptedAt: row.acceptedAt,
     startedAt: row.startedAt, completedAt: row.completedAt, problemType: row.problemType, problemNote: row.problemNote };
 }
@@ -76,6 +78,9 @@ export async function readOperations(db, user) {
   for (const task of tasks) task.trail = trails.get(task.id) || [];
   const notices = rows.length ? await db.housekeepingPlanChange.findMany({ where: { hotelId: user.hotelId, taskId: { in: rows.map(r => r.id) } }, orderBy: { createdAt: 'desc' } }) : [];
   for (const task of tasks) { const notice = notices.find(n => n.taskId === task.id); if (notice) task.planNotification = { status: notice.deliveryStatus, error: notice.lastError }; }
+  const links = rows.length ? await db.housekeepingMaintenanceLink.findMany({ where: { hotelId: user.hotelId, reportTaskId: { in: rows.map(r => r.id) }, active: true } }) : [];
+  const issues = links.length ? await db.issue.findMany({ where: { hotelId: user.hotelId, id: { in: links.map(l => l.issueId) } }, select: { id: true, title: true, status: true, followUpTaskId: true } }) : [];
+  for (const task of tasks) task.linkedRepairs = links.filter(l => l.reportTaskId === task.id).map(l => issues.find(i => i.id === l.issueId)).filter(Boolean);
   const housekeeping = tasks.filter(t => t.department === 'Housekeeping');
   const completed = housekeeping.filter(t => t.executionStatus === 'Completed');
   const durations = completed.filter(t => t.startedAt && t.completedAt).map(t => (+new Date(t.completedAt) - +new Date(t.startedAt)) / 60000).filter(n => n >= 0);

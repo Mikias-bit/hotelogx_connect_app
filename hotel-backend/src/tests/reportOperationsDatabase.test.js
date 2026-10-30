@@ -1,3 +1,5 @@
+import { createReadinessService, invalidateRoomReadiness } from '../modules/rooms/readinessService.js';
+import { createMaintenanceOperations } from '../modules/maintenance/maintenanceOperations.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -210,5 +212,113 @@ test('daily plan changes preserve history, isolate hotels and invalidate stale W
     // Invalid times or mixed locations never create work.
     await assert.rejects(service.change(fo, null, input({ room: '100', location: 'Lobby', task: 'delivery' })), /either a room/);
     await assert.rejects(service.change(fo, null, input({ room: '100', task: 'delivery', notBeforeTime: '15:00', dueTime: '14:00' })), /deadline/);
+  } finally { await db.$disconnect(); }
+});
+
+
+test('room inspection and release remain separate; housekeeping faults link through repair and follow-up', { skip: process.env.OPERATIONS_DATABASE_TESTS !== 'true', timeout: 180000 }, async () => {
+  const db = new PrismaClient(), sent = [], notices = [];
+  const manager = { id: 'ready-manager', hotelId: 'ready-a', role: 'manager' };
+  const fo = { ...manager, id: 'ready-fo', role: 'front-office' }, hkUser = { ...manager, id: 'ready-hk', role: 'housekeeping' };
+  const env = { PMS_MCP_CONTEXT_KEY: 'readiness-test'.repeat(4) };
+  const broadcast = (...event) => notices.push(event);
+  const send = async payload => { sent.push(payload); return { success: true, messageId: randomUUID() }; };
+  const housekeeping = createHousekeepingOperations({ db, send, env, broadcast });
+  const maintenance = createMaintenanceOperations({ db, send, env, broadcast });
+  const readiness = createReadinessService({ db, broadcast });
+  const view = async id => (await readOperations(db, manager)).tasks.find(t => t.id === id);
+  const room = async number => (await readiness.read(manager)).rooms.find(r => r.number === number);
+  const action = async (user, number, name, extra = {}) => readiness.update(user, number, { action: name, note: 'Staff verified the current condition', token: (await room(number)).token, ...extra });
+  const add = async (values, who = hkUser) => housekeeping.change(who, null, { requestKey: randomUUID(), reason: 'Operational request', values });
+  const report = async (id, note) => housekeeping.reportRepair(hkUser, id, { note, reportContentHash: (await view(id)).reportContentHash });
+  const finish = async id => updateReportTask(db, hkUser, id, { status: 'Completed', reportContentHash: (await view(id)).reportContentHash });
+  const issue = id => db.issue.findUnique({ where: { id } });
+  try {
+    for (const id of ['ready-a', 'ready-b']) await db.hotel.create({ data: { id, timezone: 'UTC', name: 'Readiness Test', legalName: 'Test', address: '', postcode: '', city: '', country: '', phone: '', email: '', website: '', bookingEngine: '', whatsappNumber: '', vatNumber: '', description: '' } });
+    for (const hotelId of ['ready-a', 'ready-b']) for (const number of ['100', '101']) await db.room.create({ data: { hotelId, number, floor: 1, status: 'Clean', guestStatus: 'Vacant', updatedAt: '09:00' } });
+    const original = await add({ room: '100', task: 'departure_clean_required', priority: 'High' });
+    const duplicateTask = await add({ room: '100', task: 'towels' });
+    const differentTask = await add({ room: '100', task: 'linen_change' });
+    const hkWorker = await db.housekeepingWorker.create({ data: { hotelId: manager.hotelId, name: 'Cleaner', phone: '+31655550001', whatsappEnabled: true, lastInboundAt: new Date() } });
+    const technician = await db.maintenanceWorker.create({ data: { hotelId: manager.hotelId, name: 'Technician', phone: '+31655550002', whatsappEnabled: true, lastInboundAt: new Date() } });
+    const integration = await db.whatsAppIntegration.create({ data: { hotelId: manager.hotelId, phoneNumber: '+31655550000', phoneNumberId: 'readiness-phone', wabaId: 'readiness-waba', targetType: 'internal', verifiedAt: new Date() } });
+    const inbound = (service, phone, value, id = randomUUID()) => service.handle(integration, { id, from: phone.replace('+', ''), timestamp: String(Math.floor(Date.now() / 1000)), ...(typeof value === 'string' ? { text: { body: value } } : { interactive: { button_reply: value } }) });
+    assert.equal((await room('100')).cleanliness, 'Needs cleaning'); assert.equal((await room('100')).ready, false);
+    await assert.rejects(action(fo, '100', 'inspect'), { status: 403 });
+    await assert.rejects(action(hkUser, '100', 'release'), { status: 403 });
+    await assert.rejects(action(fo, '100', 'release'), /requires a current inspection/);
+    await assert.rejects(action(hkUser, '100', 'cleaned'), /individual housekeeping/);
+    // Worker-originated maintenance button creates a provisional linked ticket immediately.
+    await housekeeping.assign(hkUser, { workerId: hkWorker.id, requestKey: randomUUID(), tasks: [{ id: original.taskId, contentHash: (await view(original.taskId)).reportContentHash }] });
+    await inbound(housekeeping, hkWorker.phone, 'TASKS'); await inbound(housekeeping, hkWorker.phone, sent.at(-1).buttons[0]);
+    await inbound(housekeeping, hkWorker.phone, sent.at(-1).buttons.find(b => b.title === 'Problem'));
+    const maintenanceButton = sent.at(-1).buttons.find(b => b.title === 'Maintenance');
+    await inbound(housekeeping, hkWorker.phone, maintenanceButton, 'repair-report-once');
+    let links = await db.housekeepingMaintenanceLink.findMany({ where: { hotelId: manager.hotelId, reportTaskId: original.taskId, active: true } });
+    assert.equal(links.length, 1); const repairId = links[0].issueId;
+    await inbound(housekeeping, hkWorker.phone, maintenanceButton, 'repair-report-once');
+    assert.equal(await db.housekeepingMaintenanceLink.count({ where: { hotelId: manager.hotelId, reportTaskId: original.taskId } }), 1);
+    await inbound(housekeeping, hkWorker.phone, 'Leaking sink tap');
+    assert.equal((await issue(repairId)).detail, 'Leaking sink tap');
+    const duplicate = await report(duplicateTask.taskId, '  LEAKING sink tap! ');
+    assert.equal(duplicate.id, repairId, 'same normalized fault shares the existing open ticket');
+    const different = await report(differentTask.taskId, 'Broken bedside lamp'); assert.notEqual(different.id, repairId);
+    assert.equal((await room('100')).issues.length, 2);
+    await assert.rejects(finish(original.taskId), /Linked maintenance is still open/);
+    await assert.rejects(housekeeping.reportRepair({ ...hkUser, hotelId: 'ready-b' }, original.taskId, { note: 'foreign', reportContentHash: (await view(original.taskId)).reportContentHash }), { status: 404 });
+    // Technician acceptance, start and completion create one follow-up without completing the original task.
+    await maintenance.assign(manager, { workerId: technician.id, requestKey: randomUUID(), work: [{ kind: 'issue', id: repairId, version: (await issue(repairId)).version }] });
+    await inbound(maintenance, technician.phone, 'MAINTENANCE'); await inbound(maintenance, technician.phone, sent.at(-1).buttons[0]);
+    await inbound(maintenance, technician.phone, sent.at(-1).buttons.find(b => b.title === 'Start'));
+    const done = sent.at(-1).buttons.find(b => b.title === 'Completed'); await inbound(maintenance, technician.phone, done, 'repair-done-once');
+    const repaired = await issue(repairId); assert.equal(repaired.status, 'Completed'); assert(repaired.followUpTaskId);
+    await inbound(maintenance, technician.phone, done, 'repair-done-once');
+    assert.equal((await issue(repairId)).followUpTaskId, repaired.followUpTaskId);
+    assert.equal((await view(original.taskId)).executionStatus, 'Problem');
+    assert.equal((await view(repaired.followUpTaskId)).sourceIssueId, repairId);
+    assert.equal((await room('100')).ready, false);
+    // Reopening a repair blocks old follow-up controls; another completion creates a new cycle of work.
+    await maintenance.updateStatus(manager, 'issue', repairId, { status: 'Open', version: (await issue(repairId)).version });
+    await assert.rejects(finish(repaired.followUpTaskId), /Linked maintenance is still open/);
+    await maintenance.updateStatus(manager, 'issue', repairId, { status: 'Completed', version: (await issue(repairId)).version });
+    assert.notEqual((await issue(repairId)).followUpTaskId, repaired.followUpTaskId);
+    await maintenance.updateStatus(manager, 'issue', different.id, { status: 'Completed', version: (await issue(different.id)).version });
+    for (const task of (await readOperations(db, manager)).tasks.filter(t => t.room === '100' && t.status !== 'Completed')) await finish(task.id);
+    assert.equal((await db.room.findUnique({ where: { hotelId_number: { hotelId: manager.hotelId, number: '100' } } })).status, 'Clean', 'no task or repair path writes PMS room status');
+    assert.equal((await room('100')).cleanliness, 'Awaiting inspection'); assert.equal((await room('100')).ready, false);
+    const stale = (await room('100')).token;
+    await action(hkUser, '100', 'inspect');
+    assert.equal((await room('100')).releaseStatus, 'Awaiting release approval');
+    await assert.rejects(readiness.update(fo, '100', { action: 'release', token: stale, note: 'Old screen' }), { status: 409 });
+    await action(fo, '100', 'release'); assert.equal((await room('100')).ready, true);
+    assert.equal((await room('100')).inspectedBy, hkUser.id); assert.equal((await room('100')).releasedBy, fo.id);
+    // New work invalidates readiness; completion alone cannot reinstate an old inspection or approval.
+    const extra = await add({ room: '100', task: 'urgent_clean' }); assert.equal((await room('100')).ready, false);
+    await finish(extra.taskId); assert.equal((await room('100')).cleanliness, 'Awaiting inspection');
+    await action(hkUser, '100', 'inspect'); await action(fo, '100', 'release');
+    await action(fo, '100', 'restrictions', { restrictions: { occupied: false, dnd: true, maintenanceBlocked: false, otherRestriction: '' } });
+    assert.equal((await room('100')).ready, false);
+    await assert.rejects(action(hkUser, '100', 'inspect'), /restrictions/);
+    await action(fo, '100', 'restrictions', { restrictions: { occupied: false, dnd: false, maintenanceBlocked: false, otherRestriction: '' } });
+    await action(hkUser, '100', 'inspect'); await action(fo, '100', 'release');
+    await invalidateRoomReadiness(db, manager.hotelId, ['100']); assert.equal((await room('100')).ready, false);
+    await db.room.update({ where: { hotelId_number: { hotelId: manager.hotelId, number: '100' } }, data: { guestStatus: 'Occupied' } });
+    assert((await room('100')).restrictions.includes('Occupied / guest inside'));
+    await assert.rejects(action(hkUser, '100', 'inspect'), /restrictions/);
+    // Hotel B's same room number remains untouched; a missing foreign-only room is not created by a mutation.
+    assert.equal((await readiness.read({ ...manager, hotelId: 'ready-b' })).rooms.find(r => r.number === '100').ready, false);
+    await assert.rejects(readiness.update(manager, 'not-a-room', { action: 'release', token: 'forged', note: 'forged' }), { status: 404 });
+    await assert.rejects(readiness.read({ ...manager, role: 'guest' }), { status: 403 });
+    // Manual dirty flags are independent of completed task history.
+    await action(hkUser, '101', 'needs_cleaning'); assert.equal((await room('101')).cleanliness, 'Needs cleaning');
+    await action(hkUser, '101', 'cleaned'); await action(hkUser, '101', 'inspect'); await action(fo, '101', 'release');
+    assert.equal((await room('101')).ready, true);
+    await db.task.create({ data: { id: 'ready-legacy-task', hotelId: manager.hotelId, room: '101', department: 'Housekeeping', title: 'Additional cleaning', createdAt: '12:00', source: 'Front Office', priority: 'Normal' } });
+    assert.equal((await room('101')).ready, false);
+    await db.task.update({ where: { id: 'ready-legacy-task' }, data: { status: 'Completed', version: { increment: 1 } } });
+    assert.equal((await room('101')).ready, false, 'finishing a legacy task cannot resurrect an old approval');
+
+    assert(notices.some(n => n[1] === 'readiness:updated'));
+    assert(await db.roomReadinessEvent.count({ where: { hotelId: manager.hotelId } }) > 5);
   } finally { await db.$disconnect(); }
 });

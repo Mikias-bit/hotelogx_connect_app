@@ -59,8 +59,9 @@ reject stale selections and updates. Free-text staff names cannot assign work.
 Completing one issue does not complete other maintenance tasks for the same room,
 release/block a PMS room, or automatically tell a guest that a repair is fixed.
 Room readiness and any guest communication remain separate staff decisions.
-Housekeeping problem notes remain on housekeeping tasks; this change does not
-automatically convert those notes into maintenance tickets.
+Housekeeping maintenance reports now create linked tickets. Repair completion
+creates a housekeeping follow-up; inspection and Front Office release remain
+separate. See [Room readiness and linked repairs](room-readiness-and-repairs.md).
 
 ## Deployment and validation
 

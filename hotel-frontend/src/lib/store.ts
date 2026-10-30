@@ -536,11 +536,12 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
     ),
   }));
 
+  window.dispatchEvent(new Event('hotelogx:readiness-updated'));
   if (task.id.startsWith('rt-')) window.dispatchEvent(new Event('hotelogx:operations-updated'));
 
   if (status === "Completed") {
     pushActivity({ kind: "task", text: `Completed — ${task.title}${task.room ? ` (${task.room})` : ""}`, meta: task.department });
-    if (task.conversationId) {
+    if (task.conversationId && !["Housekeeping", "Maintenance"].includes(task.department)) {
       appendMessage(task.conversationId, {
         author: "ai",
         channel: store.state.conversations.find((c) => c.id === task.conversationId)?.primaryChannel ?? "whatsapp",
@@ -623,38 +624,7 @@ export async function setRoomStatus(
     meta: via === "whatsapp" ? "WhatsApp" : "Dashboard",
   });
 
-  // Guest notification for completed tasks (conversation message only — task mutation owned by backend)
-  const released = status === "Clean" || status === "Inspected";
-  if (released && completedTaskIds.length > 0) {
-    const completedTasks = store.state.tasks.filter((t) => completedTaskIds.includes(t.id));
-    completedTasks.forEach((t) => {
-      if (t.conversationId) {
-        appendMessage(t.conversationId, {
-          author: "ai",
-          channel: store.state.conversations.find((c) => c.id === t.conversationId)?.primaryChannel ?? "whatsapp",
-          at: clockNow(),
-          confidence: 0.98,
-          body: "Good news — your room is ready. Come to reception whenever you like and we will hand over the key.",
-        });
-      }
-    });
-  }
-
-  if (released) {
-    const room = store.state.rooms.find((r) => r.number === roomNumber);
-    if (room?.arrivalTime) {
-      pushActivity({
-        kind: "task",
-        text: `Reception told room ${roomNumber} is ready for the ${room.arrivalTime} arrival`,
-        meta: "Front Office",
-      });
-      toast(`Room ${roomNumber} released`, "good", `Reception notified for the ${room.arrivalTime} arrival`);
-      return;
-    }
-    toast(`Room ${roomNumber} released`, "good", "Front Office dashboard updated");
-    return;
-  }
-  toast(`Room ${roomNumber} — ${status}`, status === "Maintenance" ? "attend" : "ai");
+  toast(`Room ${roomNumber} ? ${status}`, 'ai');
 }
 
 /**

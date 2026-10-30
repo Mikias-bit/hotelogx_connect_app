@@ -1,3 +1,4 @@
+import { useReadiness } from '@/lib/useReadiness';
 import { useState } from 'react';
 import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/front-office/")({
 function FrontOfficeDashboard() {
   const user = useCurrentUser();
   const operations = useOperations();
+  const readiness = useReadiness();
   const [detail, setDetail] = useState<'vip' | 'departure_bills' | null>(null);
   const navigate = useNavigate();
   const escalations = useApp(selectors.escalations);
@@ -42,8 +44,8 @@ function FrontOfficeDashboard() {
   const myTasks = tasks
     .filter((t) => t.source !== "Daily report" && t.status !== "Completed" && (t.department === "Front Office" || t.department === "VIP" || t.department === "Billing"))
     .slice(0, 6);
-  const readyRooms = rooms.filter((r) => r.status === "Clean" || r.status === "Inspected");
-  const arrivalsWaiting = rooms.filter((r) => r.arrivalTime && r.status !== "Clean" && r.status !== "Inspected");
+  const readyRooms = readiness.error ? [] : readiness.rooms.filter(r => r.ready);
+  const arrivalsWaiting = rooms.filter(r => r.arrivalTime && !readyRooms.some(ready => ready.number === r.number));
   const aiHandling = conversations.filter((c) => c.aiStatus === "ai-handling").length;
 
   const arrivalsCount = rooms.filter((r) => r.arrivalTime).length;
@@ -59,7 +61,7 @@ function FrontOfficeDashboard() {
 
   const lines: BriefLine[] = [
     {
-      text: `${arrivalsCount} arrivals scheduled today. ${readyRooms.length} rooms are released and ${arrivalsWaiting.length} arrivals are currently waiting on housekeeping.`,
+      text: readiness.error || readiness.loading ? "Room readiness is not yet confirmed. Open Room readiness before allocating a room." : `${arrivalsCount} arrivals scheduled today. ${readyRooms.length} rooms are released and ${arrivalsWaiting.length} arrivals are currently waiting on housekeeping.`,
       tone: arrivalsWaiting.length > 0 ? "attend" : "good",
     },
     {
@@ -71,7 +73,7 @@ function FrontOfficeDashboard() {
       tone: escalations.length > 0 ? "urgent" : "good",
     },
     {
-      text: `${readyRooms.length} out of ${rooms.length} total rooms are clean and inspected for incoming guests.`,
+      text: readiness.error || readiness.loading ? "Inspection and release approvals are loading or unavailable." : `${readyRooms.length} out of ${rooms.length} total rooms have current inspection and Front Office release approval.`,
       tone: "good",
     },
   ];
@@ -100,7 +102,7 @@ function FrontOfficeDashboard() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <StatCard label="Arrivals" value={arrivalsCount} hint={`${earlyCheckInsCount} early`} icon={LogIn} tone="pine" delay={0} />
           <StatCard label="Departures" value={departuresCount} hint="late checkouts monitored" icon={LogOut} tone="mute" delay={40} />
-          <StatCard label="Rooms ready" value={`${readyRooms.length}/${rooms.length}`} hint={`${arrivalsWaiting.length} arrivals waiting`} icon={BedDouble} tone="attend" delay={80} />
+          <StatCard label="Rooms ready" value={readiness.error || readiness.loading ? "?" : `${readyRooms.length}/${readiness.rooms.length}`} onClick={() => navigate({ to: "/front-office/rooms" })} hint="Inspect restrictions and release approvals" icon={BedDouble} tone="attend" delay={80} />
           <StatCard label="Open requests" value={guestRequests.length} hint="in-house guests" icon={MessageSquare} tone="ai" delay={120} />
           <StatCard label="VIPs" value={vipReady ? vipArrivalsCount : '—'} hint="View VIP guests" icon={Crown} tone="pine" delay={160} onClick={() => setDetail('vip')} />
           <StatCard label="Departure balances" value={balancesReady ? balanceCount : '—'} hint="Problems to review" icon={TriangleAlert} tone="attend" delay={180} emphasis={balancesReady && balanceCount > 0} onClick={() => setDetail('departure_bills')} />
@@ -174,7 +176,7 @@ function FrontOfficeDashboard() {
                         </p>
                       </div>
                       <Badge tone={statusTone(r.status)} dot>
-                        {r.status}
+                        {readiness.rooms.find(room => room.number === r.number)?.releaseStatus || "Readiness not confirmed"}
                       </Badge>
                     </li>
                   ))}
