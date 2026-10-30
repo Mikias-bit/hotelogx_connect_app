@@ -11,13 +11,14 @@ export async function invalidateRoomReadiness(db, hotelId, numbers) {
   await db.roomReadiness.updateMany({ where: { hotelId, roomNumber: { in: numbers } }, data: { inspectedAt: null, inspectedBy: null, inspectionHash: null, releasedAt: null, releasedBy: null, releaseHash: null, cleaningConfirmedAt: null, version: { increment: 1 } } });
 }
 export async function readinessContext(db, hotelId) {
-  const [hotel, rooms, states, reportTasks, tasks, issues] = await Promise.all([
+  const [hotel, rooms, states, reportTasks, tasks, issues, blockers] = await Promise.all([
     db.hotel.findUnique({ where: { id: hotelId }, select: { timezone: true } }),
     db.room.findMany({ where: { hotelId }, orderBy: { number: 'asc' } }),
     db.roomReadiness.findMany({ where: { hotelId } }),
     db.reportTask.findMany({ where: { hotelId, kind: 'housekeeping', active: true } }),
     db.task.findMany({ where: { hotelId, department: { in: ['Housekeeping', 'Maintenance'] } } }),
     db.issue.findMany({ where: { hotelId, status: { not: 'Duplicate' } } }),
+    db.operationalBlocker.findMany({ where: { hotelId, resolvedAt: null } }),
   ]);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: hotel?.timezone || 'Europe/Amsterdam' }).format(new Date());
   const numbers = new Set([...rooms.map(r => r.number), ...reportTasks.map(r => planData(r).room).filter(Boolean)]);
@@ -28,11 +29,13 @@ export async function readinessContext(db, hotelId) {
     const legacy = allLegacy.filter(r => !closed(r.status));
     const repairs = issues.filter(r => r.room === number && !closed(r.status));
     const maintenanceTasks = legacy.filter(r => r.department === 'Maintenance');
+    const roomBlockers = blockers.filter(b => b.workKind === 'report' ? hk.some(t => t.id === b.workId) : b.workKind === 'issue' ? issues.some(i => i.id === b.workId && i.room === number) : allLegacy.some(t => t.id === b.workId));
     const open = [...hk.filter(r => !closed(r.status)), ...legacy.filter(r => r.department === 'Housekeeping')];
     const contextHash = hash([today, room && [room.status, room.guestStatus, room.arrivalTime], hk.map(r => [r.id, r.status, r.planVersion, r.updatedAt]).sort(), allLegacy.map(r => [r.id, r.status, r.version]).sort(), issues.filter(r => r.room === number).map(r => [r.id, r.status, r.version]).sort()]);
     const pmsOccupied = !!room && ['Occupied', 'In House', 'In-House', 'Departing'].includes(room.guestStatus);
     const pmsDnd = room?.status === 'DND', pmsBlocked = ['Maintenance', 'Blocked'].includes(room?.status);
     const restrictions = [
+      ...roomBlockers.map(b => `${b.type.replaceAll('_', ' ')}: ${b.followUpLocal ? `${b.followUpLocal.replace('T', ' ')} (${b.timezone}), ${b.ownerName}` : 'needs follow-up scheduling'}`),
       ...(saved?.occupied || pmsOccupied ? ['Occupied / guest inside'] : []),
       ...(saved?.dnd || pmsDnd || hk.some(r => r.status === 'Problem' && r.problemType === 'dnd') ? ['Do not disturb'] : []),
       ...(saved?.maintenanceBlocked || repairs.length || maintenanceTasks.length ? ['Maintenance restriction'] : []),

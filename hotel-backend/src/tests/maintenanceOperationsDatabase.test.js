@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { createMaintenanceOperations } from '../modules/maintenance/maintenanceOperations.js';
+import { createBlockerService } from '../modules/operations/blockers.js';
 
 test('Neon maintenance assignment, WhatsApp acceptance, completion, problems and isolation', {
   skip: process.env.MAINTENANCE_DATABASE_TESTS !== 'true', timeout: 180000,
@@ -70,6 +71,10 @@ test('Neon maintenance assignment, WhatsApp acceptance, completion, problems and
     assert.equal((await db.task.findUnique({ where: { id: task.id } })).status, 'Waiting');
     await inbound('Replacement cable arrives tomorrow');
     assert.equal((await db.task.findUnique({ where: { id: task.id } })).problemNote, 'Replacement cable arrives tomorrow');
+    await inbound('MAINTENANCE'); assert(!latest().buttons?.length, 'Waiting for parts cannot be resumed without resolution');
+    const blocker = await db.operationalBlocker.findFirst({ where: { workId: task.id, resolvedAt: null } });
+    assert.equal(blocker.type, 'parts'); assert.equal(blocker.needsDetails, true);
+    await createBlockerService({ db }).resolve(user, blocker.id, { version: blocker.version, note: 'Replacement cable received; resume repair' });
     await inbound('MAINTENANCE'); await inbound(latest().buttons[0]); await inbound(latest().buttons[0]);
     assert.equal((await db.task.findUnique({ where: { id: task.id } })).status, 'Completed');
     assert.match(latest().text, /No maintenance tasks/);

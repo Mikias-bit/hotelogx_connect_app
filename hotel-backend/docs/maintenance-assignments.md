@@ -22,6 +22,9 @@ healthy hotel. Existing records in the database are preserved.
    event attributed to the technician, and sends the next available task.
 6. **Problem → Parts required / Need help** records a waiting/escalated status.
    The next text reply becomes a problem note. `MAINTENANCE` returns to current work.
+   Parts creates a blocker that a coordinator must schedule and explicitly resolve
+   before work resumes. **Other blocker** adds contractor, unsuccessful repair,
+   DND and guest-inside reporting. See [blockers and follow-ups](operational-blockers.md).
 
 `TASKS` also works for technicians registered only in maintenance. If a phone is
 registered for both maintenance and housekeeping, use `MAINTENANCE` or

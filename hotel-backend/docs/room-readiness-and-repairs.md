@@ -60,7 +60,8 @@ task actions.
 
 Dashboard updates use hotel-scoped events with polling as a fallback. Repairs and
 follow-ups are linked in both assignment views. This feature does not add media
-uploads, contractor scheduling or automatic cross-day task carry-forward.
+uploads. [Blockers and follow-ups](operational-blockers.md) now adds contractor
+appointments/follow-ups and cross-day deferred work with daily coordinator review.
 
 ## Deployment
 

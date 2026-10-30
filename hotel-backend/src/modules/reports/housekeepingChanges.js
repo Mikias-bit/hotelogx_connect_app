@@ -1,3 +1,4 @@
+import { assertUnblocked } from '../operations/blockers.js';
 import { randomUUID } from 'node:crypto';
 import { hash } from './reportService.js';
 import { syncOperations, failOperation } from './reportOperations.js';
@@ -16,11 +17,12 @@ export async function saveHousekeepingChange(db, user, id, input) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${user.hotelId}`}, 0))`;
     const previous = await tx.housekeepingPlanChange.findUnique({ where: { hotelId_requestKey: { hotelId: user.hotelId, requestKey: input.requestKey } } });
     if (previous) { if (previous.requestHash !== requestHash) failOperation('Request ID already used for a different change', 409); return previous; }
-    const old = id ? await tx.reportTask.findFirst({ where: { id, hotelId: user.hotelId, kind: 'housekeeping', active: true, reportDate: snapshot.today } }) : null;
+    const old = id ? await tx.reportTask.findFirst({ where: { id, hotelId: user.hotelId, kind: 'housekeeping', active: true, OR: [{ reportDate: snapshot.today }, { carryForward: true }] } }) : null;
     if (id && !old) failOperation('Current housekeeping task not found', 404);
     if (old && planToken(old) !== input.reportContentHash) failOperation('Task changed; refresh and review the current instructions', 409);
     if (old?.status === 'Completed') failOperation('Completed work is retained. Add a new follow-up task instead.', 409);
     if (input.cancel !== undefined && typeof input.cancel !== 'boolean') failOperation('Invalid cancellation');
+    if (input.cancel && old) await assertUnblocked(tx, user.hotelId, 'report', [old.id]);
     if (input.cancel && !old) failOperation('Only an existing task can be cancelled');
     if (old?.sourceReviewRequired && !input.cancel && !['keep', 'adopt'].includes(input.sourceDecision)) failOperation('Review the changed morning plan before saving', 409);
     if (input.sourceDecision === 'adopt' && (!old?.sourcePresent || !old?.pendingSourceData)) failOperation('No replacement source instructions are available');
@@ -48,10 +50,10 @@ export async function saveHousekeepingChange(db, user, id, input) {
     if (old) {
       // This overlay is staff-owned; later engine snapshots cannot overwrite it.
       const updated = await tx.reportTask.updateMany({ where: { id: old.id, hotelId: user.hotelId, updatedAt: old.updatedAt, planVersion: old.planVersion },
-        data: { overrides: data, notBefore, dueAt, sourceReviewRequired: false, planVersion, ...(input.cancel ? { active: false, status: 'Cancelled' } : {}) } });
+        data: { overrides: data, notBefore, dueAt, sourceReviewRequired: false, planVersion, ...(input.cancel ? { active: false, status: 'Cancelled', carryForward: false } : {}) } });
       if (!updated.count) failOperation('Task changed; refresh before saving', 409);
     } else {
-      await tx.reportTask.create({ data: { id: taskId, hotelId: user.hotelId, kind: 'housekeeping', reportDate: snapshot.today, itemKey: taskId, origin: 'staff', data, contentHash: hash(data), sourceGeneratedAt: new Date(), planVersion, notBefore, dueAt } });
+      await tx.reportTask.create({ data: { id: taskId, hotelId: user.hotelId, kind: 'housekeeping', reportDate: snapshot.today, itemKey: taskId, origin: 'staff', carryForward: true, carryReviewedDate: snapshot.today, data, contentHash: hash(data), sourceGeneratedAt: new Date(), planVersion, notBefore, dueAt } });
     }
     const worker = old?.assignedWorkerId ? await tx.housekeepingWorker.findFirst({ where: { id: old.assignedWorkerId, hotelId: user.hotelId } }) : null;
     await invalidateTaskRoomApprovals(tx, user.hotelId, [...(old ? [old] : []), { data }]);

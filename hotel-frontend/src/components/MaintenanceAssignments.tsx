@@ -1,3 +1,4 @@
+import { BlockerControls } from './OperationalBlockers';
 import { useEffect, useRef, useState } from 'react';
 import { AppShell } from './AppShell';
 import { Badge, Button, Card, SectionTitle, statusTone } from './ui';
@@ -22,7 +23,7 @@ function MaintenanceAssignmentBoard() {
   const pending = useRef<{ signature: string; key: string } | null>(null);
   useEffect(() => { if (data && !configLoaded.current) { setConfig({ templateName: data.config.templateName || '', templateLanguage: data.config.templateLanguage }); configLoaded.current = true; } }, [data]);
   const key = (row: { kind: string; id: string; version: number }) => `${row.kind}:${row.id}:${row.version}`;
-  const eligible = data?.work.filter(row => !['Completed', 'In Progress'].includes(row.status)) || [];
+  const eligible = data?.work.filter(row => !row.blockers?.length && !['Completed', 'In Progress'].includes(row.status)) || [];
   const chosen = eligible.filter(row => selected.includes(key(row)));
   const execute = async (fn: () => Promise<string>) => {
     if (busy) return;
@@ -58,8 +59,8 @@ function MaintenanceAssignmentBoard() {
             <td className="min-w-44 border-b border-line-soft p-2"><strong>{row.room || 'General'}</strong><p>{row.title}</p><p className="text-xs text-ink-4">{row.kind === 'issue' ? 'Issue' : 'Follow-up task'} · {row.priority}</p></td>
             <td className="border-b border-line-soft p-2"><Badge tone={statusTone(row.status)}>{row.status}</Badge></td>
             <td className="min-w-40 border-b border-line-soft p-2">{row.assignee || 'Unassigned'}{([['assignedAt', 'Assigned'], ['acceptedAt', 'Accepted'], ['startedAt', 'Started'], ['completedAt', 'Completed']] as const).map(([field, label]) => row[field] && <p key={field} className="text-xs text-ink-3">{label} {new Date(row[field]!).toLocaleString()}</p>)}</td>
-            <td className="min-w-44 max-w-sm whitespace-pre-wrap border-b border-line-soft p-2">{row.detail}{row.linkedHousekeepingTaskIds?.length ? <p className="mt-2 text-xs">Linked housekeeping: {row.linkedHousekeepingTaskIds.join(", ")}</p> : null}{row.followUpTaskId && <p className="mt-2 text-xs">Housekeeping follow-up: {row.followUpTaskId}. Room inspection and release are still required.</p>}{row.problemNote && <p className="mt-1 text-attend">{row.problemNote}</p>}</td>
-            <td className="border-b border-line-soft p-2"><Button size="sm" variant="outline" disabled={busy || !!error} onClick={() => void execute(async () => {
+            <td className="min-w-44 max-w-sm whitespace-pre-wrap border-b border-line-soft p-2">{row.detail}{row.status !== "Completed" && <BlockerControls work={{ workKind: row.kind, workId: row.id, workVersion: row.version }} blockers={row.blockers} timezone={data.timezone} reload={load} />}{row.linkedHousekeepingTaskIds?.length ? <p className="mt-2 text-xs">Linked housekeeping: {row.linkedHousekeepingTaskIds.join(", ")}</p> : null}{row.followUpTaskId && <p className="mt-2 text-xs">Housekeeping follow-up: {row.followUpTaskId}. Room inspection and release are still required.</p>}{row.problemNote && <p className="mt-1 text-attend">{row.problemNote}</p>}</td>
+            <td className="border-b border-line-soft p-2"><Button size="sm" variant="outline" disabled={busy || !!error || !!row.blockers?.length} onClick={() => void execute(async () => {
               const status = row.status === 'Completed' ? 'Open' : 'Completed';
               await api.updateMaintenance(row.kind, row.id, { version: row.version, status });
               return status === 'Completed' ? 'Work marked complete by staff. Check room readiness separately.' : 'Work reopened and unassigned. Select a technician to assign it again.';

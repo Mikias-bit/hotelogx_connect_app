@@ -1,4 +1,5 @@
 import readinessRoutes from './modules/rooms/readinessRoutes.js';
+import blockerRoutes from './modules/operations/blockerRoutes.js';
 import reportRoutes from './modules/reports/reportRoutes.js';
 import maintenanceRoutes from './modules/maintenance/maintenanceRoutes.js';
 import lostFoundRoutes from './modules/lost-found/lostFoundRoutes.js';
@@ -53,6 +54,7 @@ router.get('/email-detect', handleEmailDetect);
 router.use('/auth', authRoutes);
 router.use('/rooms', roomsRoutes);
 router.use('/room-readiness', readinessRoutes);
+router.use('/operational-blockers', blockerRoutes);
 router.use('/lost-found', lostFoundRoutes);
 router.use('/reports', reportRoutes);
 router.use('/operations', operationsRoutes);

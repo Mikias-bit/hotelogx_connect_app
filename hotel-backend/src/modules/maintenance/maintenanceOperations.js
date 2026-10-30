@@ -1,5 +1,6 @@
+import { assertUnblocked, draftBlocker, addBlockerNote, workBlockers, hotelDay } from '../operations/blockers.js';
 import { repairStatusChanged } from '../reports/housekeepingRepairs.js';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 
 export function fail(message, status = 400) { throw Object.assign(new Error(message), { status }); }
 const kinds = ['issue', 'task'];
@@ -12,7 +13,7 @@ const include = kind => kind === 'issue' ? { updates: { orderBy: { id: 'asc' } }
 const requireManager = user => { if (!user?.hotelId || !['manager', 'maintenance'].includes(user.role)) fail('Maintenance manager access required', 403); };
 
 export function createMaintenanceOperations({ db, send, broadcast = () => {}, env = process.env, now = () => new Date() }) {
-  const publish = hotelId => { for (const event of ['maintenance:updated', 'reports:updated', 'readiness:updated']) broadcast(hotelId, event, { refresh: true }); };
+  const publish = hotelId => { for (const event of ['maintenance:updated', 'reports:updated', 'readiness:updated', 'blockers:updated']) broadcast(hotelId, event, { refresh: true }); };
   const lock = async (tx, hotelId) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`reports:${hotelId}`}, 0))`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`maintenance:${hotelId}`}, 0))`;
@@ -29,8 +30,10 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       db.maintenanceAssignment.findMany({ where: { hotelId: user.hotelId }, orderBy: { createdAt: 'desc' }, take: 30 }),
       db.maintenanceConfig.findUnique({ where: { hotelId: user.hotelId } }),
     ]);
+    const blockers = [...await workBlockers(db, user.hotelId, 'issue', rows.filter(r => r.kind === 'issue').map(r => r.id)), ...await workBlockers(db, user.hotelId, 'task', rows.filter(r => r.kind === 'task').map(r => r.id))];
     const links = await db.housekeepingMaintenanceLink.findMany({ where: { hotelId: user.hotelId, active: true } });
-    return { work: rows.map(row => ({ ...row, linkedHousekeepingTaskIds: links.filter(l => l.issueId === row.id).map(l => l.reportTaskId), assignee: workers.find(w => w.id === row.assignedWorkerId)?.name || row.assignee })),
+    const { timezone } = await hotelDay(db, user.hotelId);
+    return { timezone, work: rows.map(row => ({ ...row, blockers: blockers.filter(b => b.workKind === row.kind && b.workId === row.id), linkedHousekeepingTaskIds: links.filter(l => l.issueId === row.id).map(l => l.reportTaskId), assignee: workers.find(w => w.id === row.assignedWorkerId)?.name || row.assignee })),
       workers: workers.map(({ lastInboundAt, pendingProblemRef, ...worker }) => worker), assignments,
       config: config || { templateName: '', templateLanguage: 'en_US' } };
   }
@@ -65,14 +68,17 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
   }
   function parse(worker, value) {
     const parts = String(value || '').split('.');
-    if (parts.length !== 6 || parts[0] !== 'mt' || !['accept', 'start', 'done', 'problem', 'parts', 'help'].includes(parts[3]) || !/^[A-Za-z0-9_-]{22}$/.test(parts[5])) return null;
+    if (parts.length !== 6 || parts[0] !== 'mt' || !['accept', 'start', 'done', 'problem', 'parts', 'help', 'more', 'contractor', 'failed', 'access', 'inside', 'dnd'].includes(parts[3]) || !/^[A-Za-z0-9_-]{22}$/.test(parts[5])) return null;
     const expiry = Number(parts[4]);
     if (!Number.isFinite(expiry) || expiry < +now() / 1000 || expiry > +now() / 1000 + 86410) return null;
     if (!timingSafeEqual(Buffer.from(parts[5]), Buffer.from(signature(worker, parts.slice(0, 5).join('.'))))) return null;
     return { assignmentId: parts[1], workRef: Buffer.from(parts[2], 'base64url').toString(), action: parts[3] };
   }
   async function packet(worker) {
-    const rows = (await work(db, worker.hotelId)).filter(row => row.assignedWorkerId === worker.id && row.assignmentId && ['Assigned', 'Accepted', 'In Progress', 'Waiting Parts'].includes(row.status));
+    const allBlockers = await db.operationalBlocker.findMany({ where: { hotelId: worker.hotelId, resolvedAt: null, workKind: { in: ['issue', 'task'] } } });
+    const assigned = (await work(db, worker.hotelId)).filter(row => row.assignedWorkerId === worker.id);
+    const held = allBlockers.filter(b => assigned.some(r => r.kind === b.workKind && r.id === b.workId));
+    const rows = assigned.filter(row => !held.some(b => b.workKind === row.kind && b.workId === row.id)).filter(row => row.assignedWorkerId === worker.id && row.assignmentId && ['Assigned', 'Accepted', 'In Progress', 'Waiting Parts'].includes(row.status));
     const pending = rows.find(row => row.status === 'Assigned');
     if (pending) {
       const batch = rows.filter(row => row.assignmentId === pending.assignmentId && row.status === 'Assigned');
@@ -80,7 +86,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
         buttons: [button(worker, pending.assignmentId, 'all', 'accept', 'Accept')] };
     }
     const row = rows.find(row => row.status === 'In Progress') || rows.find(row => row.status === 'Accepted') || rows[0];
-    if (!row) return { text: 'No maintenance tasks are waiting. Reply MAINTENANCE to refresh your assignments.', buttons: [] };
+    if (!row) return { text: held.length ? `Work is deferred: ${held.map(b => `${b.type.replaceAll('_', ' ')} ? ${b.followUpLocal ? `${b.followUpLocal.replace('T', ' ')} (${b.timezone}), owner ${b.ownerName}` : 'coordinator must schedule follow-up'}`).join('; ')}. Reply MAINTENANCE to refresh.` : 'No maintenance tasks are waiting. Reply MAINTENANCE to refresh your assignments.', buttons: [] };
     return { text: `${row.room ? `Room / location ${row.room}` : 'General task'} — ${row.title}\n${row.detail || ''}\nStatus: ${row.status}${row.problemNote ? `\nNote: ${row.problemNote}` : ''}`.slice(0, 1000),
       buttons: [button(worker, row.assignmentId, ref(row), row.status === 'In Progress' ? 'done' : 'start', row.status === 'In Progress' ? 'Completed' : 'Start'), button(worker, row.assignmentId, ref(row), 'problem', 'Problem')] };
   }
@@ -126,6 +132,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       for (const selection of selected) {
         const row = await tx[selection.kind].findFirst({ where: scope(user.hotelId, selection.kind, { id: selection.id }) });
         if (!row || row.version !== selection.version || ['Completed', 'In Progress', 'Duplicate'].includes(row.status)) fail('Tasks changed or are started/completed. Refresh before assigning.', 409);
+        await assertUnblocked(tx, user.hotelId, selection.kind, [row.id]);
         rows.push({ ...row, kind: selection.kind });
       }
       const assignment = await tx.maintenanceAssignment.create({ data: { hotelId: user.hotelId, workerId, work: selected, requestKey, createdBy: user.id } });
@@ -149,11 +156,13 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       const row = await tx[kind].findFirst({ where: scope(user.hotelId, kind, { id }) });
       if (!row) fail('Maintenance task not found', 404);
       if (version !== undefined && version !== row.version) fail('Task changed. Refresh before updating.', 409);
+      await assertUnblocked(tx, user.hotelId, kind, [id]);
       const data = { ...(kind === 'issue' && row.status === 'Completed' && status !== 'Completed' ? { repairCycle: { increment: 1 }, followUpTaskId: null } : {}), status: storedStatus(kind, status), completedAt: status === 'Completed' ? now() : null, version: { increment: 1 },
         ...(status === 'In Progress' && !row.startedAt ? { startedAt: now() } : {}),
         ...(note ? { problemNote: note.trim() } : {}),
         ...(status === 'Open' ? { assignee: null, assignedWorkerId: null, assignmentId: null, assignedAt: null, acceptedAt: null, startedAt: null, problemNote: null } : {}) };
       await tx[kind].updateMany({ where: scope(user.hotelId, kind, { id, version: row.version }), data });
+      if (status === 'Waiting Parts') await draftBlocker(tx, { hotelId: user.hotelId, kind, work: row, type: 'parts', actor: user.id, requestKey: `parts-${randomUUID()}`, description: note.trim() });
       if (kind === 'issue') await repairStatusChanged(tx, row, status, user.id);
       await audit(tx, { ...row, kind }, user.id, `Staff marked ${status}${note ? ': ' + note : ''}`, 'dashboard');
       return tx[kind].findFirst({ where: scope(user.hotelId, kind, { id }), include: include(kind) });
@@ -191,23 +200,29 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
           if (action.action === 'problem') {
             const row = rows[0];
             if (!['Accepted', 'In Progress', 'Waiting Parts'].includes(row.status)) return;
-            response = { text: `${row.title}: what is preventing completion?`, buttons: [button(worker, row.assignmentId, ref(row), 'parts', 'Parts required'), button(worker, row.assignmentId, ref(row), 'help', 'Need help')] }; return;
+            response = { text: `${row.title}: what is preventing completion?`, buttons: [button(worker, row.assignmentId, ref(row), 'parts', 'Parts required'), button(worker, row.assignmentId, ref(row), 'help', 'Need help'), button(worker, row.assignmentId, ref(row), 'more', 'Other blocker')] }; return;
           }
-          const status = { accept: 'Accepted', start: 'In Progress', done: 'Completed', parts: 'Waiting Parts', help: 'Escalated' }[action.action];
-          const from = { accept: ['Assigned'], start: ['Accepted', 'Waiting Parts'], done: ['In Progress'], parts: ['Accepted', 'In Progress', 'Waiting Parts'], help: ['Accepted', 'In Progress', 'Waiting Parts'] }[action.action];
+          if (['more', 'access'].includes(action.action)) {
+            const row = rows[0];
+            response = { text: 'Choose the blocker.', buttons: action.action === 'more' ? [button(worker, row.assignmentId, ref(row), 'contractor', 'Contractor needed'), button(worker, row.assignmentId, ref(row), 'failed', 'Repair unsuccessful'), button(worker, row.assignmentId, ref(row), 'access', 'Room access')] : [button(worker, row.assignmentId, ref(row), 'dnd', 'Do not disturb'), button(worker, row.assignmentId, ref(row), 'inside', 'Guest inside')] }; return;
+          }
+          const status = { accept: 'Accepted', start: 'In Progress', done: 'Completed', parts: 'Waiting Parts', help: 'Escalated', contractor: 'Escalated', failed: 'Escalated', dnd: 'Escalated', inside: 'Escalated' }[action.action];
+          const from = { accept: ['Assigned'], start: ['Accepted', 'Waiting Parts'], done: ['In Progress'], parts: ['Accepted', 'In Progress', 'Waiting Parts'], help: ['Accepted', 'In Progress', 'Waiting Parts'], contractor: ['Accepted', 'In Progress'], failed: ['Accepted', 'In Progress'], dnd: ['Accepted', 'In Progress'], inside: ['Accepted', 'In Progress'] }[action.action];
           let changed = 0;
           for (const row of rows.filter(row => from?.includes(row.status))) {
+            if (['accept', 'start', 'done'].includes(action.action)) await assertUnblocked(tx, worker.hotelId, row.kind, [row.id]);
             const values = { status: storedStatus(row.kind, status), version: { increment: 1 },
               ...(status === 'Accepted' ? { acceptedAt: now() } : status === 'In Progress' ? { startedAt: row.startedAt || now() } : status === 'Completed' ? { completedAt: now() } : {}) };
             const updated = await tx[row.kind].updateMany({ where: scope(worker.hotelId, row.kind, { id: row.id, version: row.version, assignedWorkerId: worker.id, assignmentId: action.assignmentId }), data: values });
             if (!updated.count) continue;
             changed++;
+            if (['parts', 'contractor', 'failed', 'dnd', 'inside'].includes(action.action)) await draftBlocker(tx, { hotelId: worker.hotelId, kind: row.kind, work: row, type: action.action === 'failed' ? 'repair_failed' : action.action === 'inside' ? 'guest_inside' : action.action, actor: worker.id, requestKey: `wa-${receiptId}` });
             if (row.kind === 'issue') await repairStatusChanged(tx, row, status, worker.id);
             await audit(tx, row, worker.id, `WhatsApp: ${status} by ${worker.name}`, 'whatsapp');
-            if (['parts', 'help'].includes(action.action)) await tx.maintenanceWorker.update({ where: { id: worker.id }, data: { pendingProblemRef: `${row.assignmentId}|${ref(row)}` } });
+            if (['parts', 'help', 'contractor', 'failed', 'dnd', 'inside'].includes(action.action)) await tx.maintenanceWorker.update({ where: { id: worker.id }, data: { pendingProblemRef: `${row.assignmentId}|${ref(row)}` } });
           }
           if (changed && action.action === 'accept') await tx.maintenanceAssignment.updateMany({ where: { id: action.assignmentId, hotelId: worker.hotelId, workerId: worker.id }, data: { deliveryStatus: 'accepted', lastError: null } });
-          if (changed && ['parts', 'help'].includes(action.action)) response = { text: 'Problem recorded for the maintenance manager. Reply with a short description, or MAINTENANCE to continue.' };
+          if (changed && ['parts', 'help', 'contractor', 'failed', 'dnd', 'inside'].includes(action.action)) response = { text: 'Blocker recorded. Reply with the part, contractor, remaining fault or access instructions. The coordinator will schedule the owner and next action. Reply MAINTENANCE for other work.' };
         });
       } else if (worker.pendingProblemRef && text && !/^(tasks|maintenance)$/i.test(text)) {
         await db.$transaction(async tx => {
@@ -216,6 +231,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
           const [assignmentId, workRef] = worker.pendingProblemRef.split('|');
           const row = (await work(tx, worker.hotelId)).find(row => ref(row) === workRef && row.assignmentId === assignmentId && row.assignedWorkerId === worker.id && ['Waiting Parts', 'Escalated'].includes(row.status));
           if (row) {
+            await addBlockerNote(tx, worker.hotelId, row.kind, row.id, worker.id, text);
             await tx[row.kind].updateMany({ where: scope(worker.hotelId, row.kind, { id: row.id, assignmentId, assignedWorkerId: worker.id, version: row.version }), data: { problemNote: text.slice(0, 2000), version: { increment: 1 } } });
             await audit(tx, row, worker.id, `WhatsApp note: ${text.slice(0, 2000)}`, 'whatsapp');
           }
@@ -228,7 +244,8 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       await db.whatsAppReceipt.update({ where: { id: receiptId }, data: { status: 'sending', replyText: JSON.stringify(response) } });
       const sent = await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, ...response });
       await db.whatsAppReceipt.update({ where: { id: receiptId }, data: { status: sent.success ? 'done' : 'uncertain', providerMessageId: sent.messageId || null, lastError: sent.success ? null : 'Reply not confirmed; send MAINTENANCE again.' } });
-    } catch {
+    } catch (error) {
+      if (error.status) { try { await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, text: error.message }); } catch {} }
       await db.whatsAppReceipt.update({ where: { id: receiptId }, data: { status: 'uncertain', lastError: 'Operation interrupted. Review task state; no automatic replay.' } });
     }
     publish(worker.hotelId); return true;

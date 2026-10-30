@@ -35,7 +35,8 @@ export function hotelTime(date, time, timezone) {
 export async function reconcileHousekeeping(tx, report, existing, hotelId) {
   const ids = new Set();
   const byId = new Map(existing.map(r => [r.id, r]));
-  const protectedRooms = new Set(existing.filter(r => r.origin !== 'staff' && (r.assignedWorkerId || r.status === 'Completed' || Object.keys(r.overrides || {}).length)).map(r => planData(r).room));
+  const carried = await tx.reportTask.findMany({ where: { hotelId, kind: 'housekeeping', active: true, carryForward: true, reportDate: { lt: report.reportDate }, status: { notIn: ['Completed', 'Cancelled'] } } });
+  const protectedRooms = new Set([...existing, ...carried].filter(r => r.origin !== 'staff' && (r.carryForward || r.assignedWorkerId || r.status === 'Completed' || Object.keys(r.overrides || {}).length)).map(r => planData(r).room));
   for (const row of report.rows.filter(r => r.task !== 'stayover_no_cleaning')) {
     const id = `rt-${hash([hotelId, report.kind, report.reportDate, row.itemKey])}`;
     ids.add(id);
@@ -59,6 +60,6 @@ export async function reconcileHousekeeping(tx, report, existing, hotelId) {
     await tx.reportTaskEvent.create({ data: { hotelId, taskId: old.id, actor: 'report-engine', text: 'Task removed from the morning plan. Existing work and assignment history retained.' } });
     await invalidateTaskRoomApprovals(tx, hotelId, [old]);
   }
-  // Yesterday's records remain stored with their history but are not today's assignments.
-  await tx.reportTask.updateMany({ where: { hotelId, kind: 'housekeeping', origin: 'report', reportDate: { lt: report.reportDate }, active: true }, data: { active: false } });
+  // Deferred work retains its identity and history across daily snapshots.
+  await tx.reportTask.updateMany({ where: { hotelId, kind: 'housekeeping', origin: 'report', carryForward: false, reportDate: { lt: report.reportDate }, active: true }, data: { active: false } });
 }

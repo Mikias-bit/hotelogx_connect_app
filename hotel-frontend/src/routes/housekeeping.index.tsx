@@ -31,7 +31,7 @@ function HousekeepingDashboard() {
   const { data, error } = useOperations();
   const source = data?.sources.find(s => s.kind === 'housekeeping');
   const current = source?.status === 'complete' && !source.stale && !source.latestRunFailed && !error;
-  const dailyTasks = current ? data?.tasks.filter(t => t.department === 'Housekeeping') || [] : [];
+  const dailyTasks = !error ? data?.tasks.filter(t => t.department === 'Housekeeping' && (current || t.carryForward)) || [] : [];
   const byRoom = new Map<string, Task[]>();
   for (const task of dailyTasks) {
     if (task.room) byRoom.set(task.room, [...(byRoom.get(task.room) || []), task]);
@@ -54,7 +54,7 @@ function HousekeepingDashboard() {
       vip: pmsRoom?.vip,
       dnd: !completed && (roomTasks.some(t => t.problemType === 'dnd' && t.status !== 'Completed') || pmsRoom?.status === 'DND' || pmsRoom?.status === 'Guest Inside'),
       cleaner: Array.from(new Set(roomTasks.map(t => t.assignee || 'Unassigned'))).join(', '),
-      note: roomTasks.filter(t => t.problemType && t.status !== 'Completed').map(t => `${t.problemType === 'dnd' ? 'Do not disturb' : 'Maintenance'}${t.problemNote ? ': ' + t.problemNote : ''}`).join(' \u00b7 '),
+      note: roomTasks.filter(t => t.problemType && t.status !== 'Completed').map(t => `${t.problemType === 'dnd' ? 'Do not disturb' : t.problemType?.replaceAll('_', ' ')}${t.problemNote ? ': ' + t.problemNote : ''}`).join(' \u00b7 '),
     };
   });
   const toClean = rooms.filter(r => !r.completed && !r.inProgress);

@@ -1,3 +1,4 @@
+import { assertUnblocked, carryNeedsReview, workBlockers } from '../operations/blockers.js';
 import { assertNoOpenRepairs } from './housekeepingRepairs.js';
 import { readReports, allowedKinds, hash } from './reportService.js';
 import { planData, planToken, planPriority, reconcileHousekeeping } from './housekeepingPlan.js';
@@ -5,9 +6,10 @@ export const hkLabels = { post_repair_clean: 'Post-repair cleaning / check', dep
 export const failOperation = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 export const executionId = (hotelId, kind, date, key) => `rt-${hash([hotelId, kind, date, key])}`;
 export async function assertCurrentSource(tx, hotelId, rows, today) {
-  if (rows.some(r => r.reportDate !== today || r.sourceReviewRequired)) failOperation('The plan needs staff review or belongs to another day. Refresh before continuing.', 409);
+  if (rows.some(r => (r.reportDate !== today && !r.carryForward) || carryNeedsReview(r, today) || r.sourceReviewRequired)) failOperation('The plan needs staff review or belongs to another day. Refresh before continuing.', 409);
   await assertNoOpenRepairs(tx, hotelId, rows);
-  rows = rows.filter(r => r.origin !== 'staff');
+  await assertUnblocked(tx, hotelId, 'report', rows.filter(r => r.kind === 'housekeeping').map(r => r.id));
+  rows = rows.filter(r => r.origin !== 'staff' && !(r.carryForward && r.reportDate < today && r.carryReviewedDate === today));
   for (const kind of new Set(rows.map(row => row.kind))) {
     const latest = await tx.dailyReport.findFirst({ where: { hotelId, kind, reportDate: { lte: today } }, orderBy: [{ reportDate: 'desc' }, { generatedAt: 'desc' }, { receivedAt: 'desc' }] });
     if (!latest || latest.status !== 'complete' || latest.reportDate !== today || rows.filter(row => row.kind === kind).some(row => row.reportDate !== today || (row.sourcePresent !== false ? !latest.rows.some(item => item.itemKey === row.itemKey && item.contentHash === row.contentHash) : latest.rows.some(item => item.itemKey === row.itemKey)))) failOperation('The source changed or is not current. Refresh before continuing.', 409);
@@ -63,13 +65,14 @@ export function taskView(row, worker, today) {
     executionStatus: row.status, assignee: worker?.name || undefined, assignedWorkerId: row.assignedWorkerId,
     createdAt: row.reportDate, source: row.origin === 'staff' ? 'Operational change' : 'Daily report', reportDate: row.reportDate, reportContentHash: planToken(row),
     sourceIssueId: d.sourceIssueId, planVersion: row.planVersion, planData: d, sourceReviewRequired: row.sourceReviewRequired, sourcePresent: row.sourcePresent, pendingSourceData: row.pendingSourceData, notBefore: row.notBefore, dueAt: row.dueAt,
-    stale: row.reportDate !== today, trail: [], assignedAt: row.assignedAt, acceptedAt: row.acceptedAt,
+    carryForward: row.carryForward, carriedFrom: row.carryForward && row.reportDate < today ? row.reportDate : null, carryReviewRequired: carryNeedsReview(row, today),
+    stale: row.reportDate !== today && !row.carryForward, trail: [], assignedAt: row.assignedAt, acceptedAt: row.acceptedAt,
     startedAt: row.startedAt, completedAt: row.completedAt, problemType: row.problemType, problemNote: row.problemNote };
 }
 
 export async function readOperations(db, user) {
   const snapshot = await syncOperations(db, user);
-  const rows = await db.reportTask.findMany({ where: { hotelId: user.hotelId, active: true, kind: { in: allowedKinds(user.role) }, OR: [{ origin: 'report' }, { origin: 'staff', reportDate: snapshot.today }] }, orderBy: [{ reportDate: 'desc' }, { id: 'asc' }] });
+  const rows = await db.reportTask.findMany({ where: { hotelId: user.hotelId, active: true, kind: { in: allowedKinds(user.role) }, OR: [{ origin: 'report' }, { origin: 'staff', reportDate: snapshot.today }, { carryForward: true, status: { notIn: ['Completed', 'Cancelled'] } }] }, orderBy: [{ reportDate: 'desc' }, { id: 'asc' }] });
   const workers = ['manager', 'housekeeping', 'front-office'].includes(user.role) ? await db.housekeepingWorker.findMany({ where: { hotelId: user.hotelId }, orderBy: { name: 'asc' } }) : [];
   const tasks = rows.map(row => taskView(row, workers.find(w => w.id === row.assignedWorkerId), snapshot.today));
   const events = rows.length ? await db.reportTaskEvent.findMany({ where: { hotelId: user.hotelId, taskId: { in: rows.map(row => row.id) } }, orderBy: { at: 'asc' } }) : [];
@@ -81,6 +84,8 @@ export async function readOperations(db, user) {
   const links = rows.length ? await db.housekeepingMaintenanceLink.findMany({ where: { hotelId: user.hotelId, reportTaskId: { in: rows.map(r => r.id) }, active: true } }) : [];
   const issues = links.length ? await db.issue.findMany({ where: { hotelId: user.hotelId, id: { in: links.map(l => l.issueId) } }, select: { id: true, title: true, status: true, followUpTaskId: true } }) : [];
   for (const task of tasks) task.linkedRepairs = links.filter(l => l.reportTaskId === task.id).map(l => issues.find(i => i.id === l.issueId)).filter(Boolean);
+  const blockers = await workBlockers(db, user.hotelId, 'report', rows.map(r => r.id));
+  for (const task of tasks) task.blockers = blockers.filter(b => b.workId === task.id);
   const housekeeping = tasks.filter(t => t.department === 'Housekeeping');
   const completed = housekeeping.filter(t => t.executionStatus === 'Completed');
   const durations = completed.filter(t => t.startedAt && t.completedAt).map(t => (+new Date(t.completedAt) - +new Date(t.startedAt)) / 60000).filter(n => n >= 0);
@@ -111,7 +116,7 @@ export async function updateReportTask(db, user, id, input) {
     await assertCurrentSource(tx, user.hotelId, [row], snapshot.today);
     if (row.kind === 'housekeeping' && ['In Progress', 'Completed'].includes(input.status) && row.notBefore && +row.notBefore > Date.now()) failOperation('Do not enter before the recorded access time', 409);
     if (row.kind === 'housekeeping' && row.status === 'Completed') failOperation('Completed work is retained. Add a new follow-up task instead.', 409);
-    const changed = await tx.reportTask.updateMany({ where: { id, hotelId: user.hotelId, active: true, contentHash: row.contentHash, planVersion: row.planVersion, updatedAt: row.updatedAt }, data: { status: input.status,
+    const changed = await tx.reportTask.updateMany({ where: { id, hotelId: user.hotelId, active: true, contentHash: row.contentHash, planVersion: row.planVersion, updatedAt: row.updatedAt }, data: { status: input.status, ...(row.kind === 'housekeeping' && input.status === 'Completed' ? { carryForward: false } : row.kind === 'housekeeping' && ['Waiting', 'Escalated'].includes(input.status) ? { carryForward: true } : {}),
       ...(input.status === 'New' ? { assignmentId: null, assignedWorkerId: null, assignedAt: null, acceptedAt: null, startedAt: null, problemType: null, problemNote: null } : {}),
       ...(input.status === 'In Progress' && !row.startedAt ? { startedAt: new Date() } : {}), completedAt: input.status === 'Completed' ? new Date() : null } });
     if (changed.count !== 1) failOperation('Task changed; refresh first', 409);

@@ -33,6 +33,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/manager", label: "Dashboard", icon: Gauge },
     { to: "/manager/conversations", label: "Conversations", icon: MessageSquare },
     { to: "/manager/tasks", label: "Tasks", icon: ClipboardList },
+    { to: "/manager/follow-ups", label: "Follow-ups", icon: ClipboardList },
     { to: "/manager/rooms", label: "Room readiness", icon: BedDouble },
     { to: "/manager/lost-found", label: "Lost & Found", icon: Archive },
     { to: "/manager/upsells", label: "Upsells", icon: TrendingUp },
@@ -42,6 +43,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/front-office", label: "Dashboard", icon: Gauge },
     { to: "/front-office/conversations", label: "Conversations", icon: MessageSquare },
     { to: "/front-office/tasks", label: "Tasks", icon: ClipboardList },
+    { to: "/front-office/follow-ups", label: "Follow-ups", icon: ClipboardList },
     { to: "/front-office/rooms", label: "Room readiness", icon: BedDouble },
     { to: "/front-office/lost-found", label: "Lost & Found", icon: Archive },
   ],
@@ -50,12 +52,14 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/housekeeping/assignments", label: "Assignments", icon: ClipboardList },
     { to: "/housekeeping/rooms", label: "Rooms", icon: BedDouble },
     { to: "/housekeeping/tasks", label: "Tasks", icon: ClipboardList },
+    { to: "/housekeeping/follow-ups", label: "Follow-ups", icon: ClipboardList },
   ],
   maintenance: [
     { to: "/maintenance", label: "Dashboard", icon: Gauge },
     { to: "/maintenance/assignments", label: "Assignments", icon: ClipboardList },
     { to: "/maintenance/issues", label: "Issues", icon: Wrench },
     { to: "/maintenance/tasks", label: "Tasks", icon: ClipboardList },
+    { to: "/maintenance/follow-ups", label: "Follow-ups", icon: ClipboardList },
   ],
 };
 

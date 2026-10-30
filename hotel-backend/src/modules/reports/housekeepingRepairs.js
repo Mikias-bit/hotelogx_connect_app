@@ -9,6 +9,7 @@ const event = (tx, hotelId, taskId, actor, text) => tx.reportTaskEvent.create({ 
 export async function beginHousekeepingRepair(tx, task, actor) {
   const links = await tx.housekeepingMaintenanceLink.findMany({ where: { hotelId: task.hotelId, reportTaskId: task.id, active: true } });
   const existing = links.length ? await tx.issue.findFirst({ where: { hotelId: task.hotelId, id: { in: links.map(l => l.issueId) }, status: { notIn: ['Completed', 'Duplicate', 'Cancelled'] } } }) : null;
+  await tx.reportTask.update({ where: { id: task.id }, data: { carryForward: true, active: true } });
   if (existing) return existing;
   const d = planData(task), id = `MT-${randomUUID()}`;
   const issue = await tx.issue.create({ data: { id, hotelId: task.hotelId, room: d.room || d.location,
@@ -60,7 +61,7 @@ export async function repairStatusChanged(tx, issue, status, actor) {
   const id = `rt-${hash(['repair-followup', issue.hotelId, issue.id, issue.repairCycle])}`;
   const data = { room: room || '', location: room ? '' : issue.room, task: 'post_repair_clean', priority: issue.priority,
     comment: `Repair completed: ${issue.title}. Check and clean the affected area, then arrange a separate room inspection.`, sourceIssueId: issue.id };
-  await tx.reportTask.upsert({ where: { id }, create: { id, hotelId: issue.hotelId, kind: 'housekeeping', reportDate: date, itemKey: id, contentHash: hash(data), data, origin: 'staff', sourceGeneratedAt: new Date(), planVersion: 1 }, update: {} });
+  await tx.reportTask.upsert({ where: { id }, create: { id, hotelId: issue.hotelId, kind: 'housekeeping', reportDate: date, itemKey: id, contentHash: hash(data), data, origin: 'staff', carryForward: true, carryReviewedDate: date, sourceGeneratedAt: new Date(), planVersion: 1 }, update: {} });
   await tx.issue.update({ where: { id: issue.id }, data: { followUpTaskId: id } });
   await invalidateTaskRoomApprovals(tx, issue.hotelId, [{ data }]);
   await tx.reportTaskEvent.create({ data: { hotelId: issue.hotelId, taskId: id, actor, text: `Repair ${issue.id} completed. Follow-up cleaning/check required; the room has not been released.` } });

@@ -1,3 +1,4 @@
+import type { OperationalBlocker } from '@/components/OperationalBlockers';
 import type { ReadyRoom } from './useReadiness';
 import type { MaintenanceData, MaintenanceWorker, LostFoundInput, LostFoundItem, LostFoundList } from "./types";
 
@@ -20,7 +21,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -252,6 +253,10 @@ export const api = {
   getRoomReadiness: () => request<{ rooms: ReadyRoom[] }>('/room-readiness'),
   updateRoomReadiness: (room: string, input: unknown) => request(`/room-readiness/${encodeURIComponent(room)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   reportHousekeepingRepair: (id: string, input: unknown) => request<{ id: string }>(`/operations/tasks/${encodeURIComponent(id)}/maintenance`, { method: 'POST', body: JSON.stringify(input) }),
+  getOperationalBlockers: () => request<{ today: string; timezone: string; blockers: OperationalBlocker[] }>('/operational-blockers'),
+  saveOperationalBlocker: (id: string | undefined, data: unknown) => request<OperationalBlocker>(`/operational-blockers${id ? '/' + encodeURIComponent(id) : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) }),
+  resolveOperationalBlocker: (id: string, data: unknown) => request(`/operational-blockers/${encodeURIComponent(id)}/resolve`, { method: 'POST', body: JSON.stringify(data) }),
+  reviewCarriedWork: (id: string, data: unknown) => request(`/operational-blockers/carry/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify(data) }),
   getOperations: () => request<any>('/operations'),
   changeHousekeepingPlan: (id: string | undefined, data: unknown) => request<{ deliveryStatus: string; lastError?: string }>(`/operations/housekeeping/changes${id ? '/' + encodeURIComponent(id) : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) }),
   updateOperation: (id: string, data: any) => request<any>(`/operations/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),

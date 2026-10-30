@@ -1,3 +1,4 @@
+import type { OperationalBlocker } from '@/components/OperationalBlockers';
 export type Role = "manager" | "front-office" | "housekeeping" | "maintenance";
 
 export interface LostFoundInput {
@@ -152,6 +153,10 @@ export interface Conversation {
 }
 
 export interface Task {
+  blockers?: OperationalBlocker[];
+  carryForward?: boolean;
+  carriedFrom?: string;
+  carryReviewRequired?: boolean;
   sourceIssueId?: string;
   linkedRepairs?: { id: string; title: string; status: string; followUpTaskId?: string }[];
   location?: string;
@@ -490,6 +495,7 @@ export interface MewsFolio {
 
 
 export interface MaintenanceWork {
+  blockers?: OperationalBlocker[];
   linkedHousekeepingTaskIds?: string[];
   followUpTaskId?: string;
   kind: 'issue' | 'task'; id: string; title: string; room?: string; detail?: string;
@@ -504,6 +510,7 @@ export interface MaintenanceWorker {
   id: string; name: string; phone: string; active: boolean; whatsappEnabled: boolean; language: string;
 }
 export interface MaintenanceData {
+  timezone: string;
   work: MaintenanceWork[]; workers: MaintenanceWorker[];
   config: { templateName: string; templateLanguage: string };
   assignments: { id: string; workerId: string; work: { kind: string; id: string }[]; deliveryStatus: string; lastError?: string; createdAt: string }[];

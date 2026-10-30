@@ -796,6 +796,8 @@ model ReportTask {
   contentHash String
   data Json
   origin String @default("report")
+  carryForward Boolean @default(false)
+  carryReviewedDate String?
   overrides Json @default("{}")
   pendingSourceData Json?
   sourcePresent Boolean @default(true)
@@ -819,6 +821,46 @@ model ReportTask {
   @@unique([hotelId, kind, reportDate, itemKey])
   @@index([hotelId, active, kind])
   @@index([assignedWorkerId, status])
+}
+
+model OperationalBlocker {
+  id String @id @default(uuid())
+  hotelId String
+  workKind String
+  workId String
+  type String
+  description String @default("")
+  details Json @default("{}")
+  ownerName String @default("")
+  department String
+  nextAction String @default("")
+  followUpAt DateTime?
+  followUpLocal String?
+  timezone String
+  needsDetails Boolean @default(true)
+  requestKey String
+  requestHash String
+  version Int @default(0)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  resolvedAt DateTime?
+  resolvedBy String?
+  resolutionNote String?
+  @@unique([hotelId, requestKey])
+  @@index([hotelId, resolvedAt, followUpAt])
+  @@index([hotelId, workKind, workId])
+}
+
+model OperationalBlockerEvent {
+  id String @id @default(uuid())
+  hotelId String
+  blockerId String
+  actor String
+  action String
+  data Json
+  at DateTime @default(now())
+  @@index([hotelId, blockerId, at])
 }
 
 model HousekeepingAssignment {

@@ -37,8 +37,9 @@ Completed and cancelled records remain unchanged as execution history when a
 source changes. Staff-created tasks are not removed by a report rerun. Operational
 overlays retain their author/reason and before/after values in
 `HousekeepingPlanChange`; task events record changes and WhatsApp actions.
-Previous-day records remain stored; this feature edits and assigns today's plan.
-Automatic carry-forward of unfinished work is a separate feature.
+Deferred work and unfinished staff-created tasks now carry forward with their history.
+See [blockers and follow-ups](operational-blockers.md) for the required daily carry review,
+structured restrictions and explicit resolution workflow.
 
 Instruction versions reject stale browser edits, assignment selections and signed
 WhatsApp buttons. Existing assignment and acceptance/start timestamps survive an

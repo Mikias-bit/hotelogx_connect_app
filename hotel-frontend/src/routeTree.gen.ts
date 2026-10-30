@@ -22,18 +22,22 @@ import { Route as ManagerSettingsRouteImport } from './routes/manager.settings'
 import { Route as ManagerRoomsRouteImport } from './routes/manager.rooms'
 import { Route as ManagerReportsRouteImport } from './routes/manager.reports'
 import { Route as ManagerLostFoundRouteImport } from './routes/manager.lost-found'
+import { Route as ManagerFollowUpsRouteImport } from './routes/manager.follow-ups'
 import { Route as ManagerConversationsRouteImport } from './routes/manager.conversations'
 import { Route as MaintenanceTasksRouteImport } from './routes/maintenance.tasks'
 import { Route as MaintenanceIssuesRouteImport } from './routes/maintenance.issues'
+import { Route as MaintenanceFollowUpsRouteImport } from './routes/maintenance.follow-ups'
 import { Route as MaintenanceAssignmentsRouteImport } from './routes/maintenance.assignments'
 import { Route as HousekeepingTasksRouteImport } from './routes/housekeeping.tasks'
 import { Route as HousekeepingRoomsRouteImport } from './routes/housekeeping.rooms'
 import { Route as HousekeepingReportsRouteImport } from './routes/housekeeping.reports'
+import { Route as HousekeepingFollowUpsRouteImport } from './routes/housekeeping.follow-ups'
 import { Route as HousekeepingAssignmentsRouteImport } from './routes/housekeeping.assignments'
 import { Route as FrontOfficeTasksRouteImport } from './routes/front-office.tasks'
 import { Route as FrontOfficeRoomsRouteImport } from './routes/front-office.rooms'
 import { Route as FrontOfficeReportsRouteImport } from './routes/front-office.reports'
 import { Route as FrontOfficeLostFoundRouteImport } from './routes/front-office.lost-found'
+import { Route as FrontOfficeFollowUpsRouteImport } from './routes/front-office.follow-ups'
 import { Route as FrontOfficeConversationsRouteImport } from './routes/front-office.conversations'
 
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -101,6 +105,11 @@ const ManagerLostFoundRoute = ManagerLostFoundRouteImport.update({
   path: '/manager/lost-found',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManagerFollowUpsRoute = ManagerFollowUpsRouteImport.update({
+  id: '/manager/follow-ups',
+  path: '/manager/follow-ups',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ManagerConversationsRoute = ManagerConversationsRouteImport.update({
   id: '/manager/conversations',
   path: '/manager/conversations',
@@ -114,6 +123,11 @@ const MaintenanceTasksRoute = MaintenanceTasksRouteImport.update({
 const MaintenanceIssuesRoute = MaintenanceIssuesRouteImport.update({
   id: '/maintenance/issues',
   path: '/maintenance/issues',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaintenanceFollowUpsRoute = MaintenanceFollowUpsRouteImport.update({
+  id: '/maintenance/follow-ups',
+  path: '/maintenance/follow-ups',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MaintenanceAssignmentsRoute = MaintenanceAssignmentsRouteImport.update({
@@ -134,6 +148,11 @@ const HousekeepingRoomsRoute = HousekeepingRoomsRouteImport.update({
 const HousekeepingReportsRoute = HousekeepingReportsRouteImport.update({
   id: '/housekeeping/reports',
   path: '/housekeeping/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HousekeepingFollowUpsRoute = HousekeepingFollowUpsRouteImport.update({
+  id: '/housekeeping/follow-ups',
+  path: '/housekeeping/follow-ups',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HousekeepingAssignmentsRoute = HousekeepingAssignmentsRouteImport.update({
@@ -161,6 +180,11 @@ const FrontOfficeLostFoundRoute = FrontOfficeLostFoundRouteImport.update({
   path: '/front-office/lost-found',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FrontOfficeFollowUpsRoute = FrontOfficeFollowUpsRouteImport.update({
+  id: '/front-office/follow-ups',
+  path: '/front-office/follow-ups',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FrontOfficeConversationsRoute =
   FrontOfficeConversationsRouteImport.update({
     id: '/front-office/conversations',
@@ -173,18 +197,22 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/follow-ups': typeof FrontOfficeFollowUpsRoute
   '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/rooms': typeof FrontOfficeRoomsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
   '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
+  '/housekeeping/follow-ups': typeof HousekeepingFollowUpsRoute
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
   '/maintenance/assignments': typeof MaintenanceAssignmentsRoute
+  '/maintenance/follow-ups': typeof MaintenanceFollowUpsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/follow-ups': typeof ManagerFollowUpsRoute
   '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
   '/manager/rooms': typeof ManagerRoomsRoute
@@ -201,18 +229,22 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/follow-ups': typeof FrontOfficeFollowUpsRoute
   '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/rooms': typeof FrontOfficeRoomsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
   '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
+  '/housekeeping/follow-ups': typeof HousekeepingFollowUpsRoute
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
   '/maintenance/assignments': typeof MaintenanceAssignmentsRoute
+  '/maintenance/follow-ups': typeof MaintenanceFollowUpsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/follow-ups': typeof ManagerFollowUpsRoute
   '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
   '/manager/rooms': typeof ManagerRoomsRoute
@@ -230,18 +262,22 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
+  '/front-office/follow-ups': typeof FrontOfficeFollowUpsRoute
   '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
   '/front-office/rooms': typeof FrontOfficeRoomsRoute
   '/front-office/tasks': typeof FrontOfficeTasksRoute
   '/housekeeping/assignments': typeof HousekeepingAssignmentsRoute
+  '/housekeeping/follow-ups': typeof HousekeepingFollowUpsRoute
   '/housekeeping/reports': typeof HousekeepingReportsRoute
   '/housekeeping/rooms': typeof HousekeepingRoomsRoute
   '/housekeeping/tasks': typeof HousekeepingTasksRoute
   '/maintenance/assignments': typeof MaintenanceAssignmentsRoute
+  '/maintenance/follow-ups': typeof MaintenanceFollowUpsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
+  '/manager/follow-ups': typeof ManagerFollowUpsRoute
   '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
   '/manager/rooms': typeof ManagerRoomsRoute
@@ -260,18 +296,22 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/follow-ups'
     | '/front-office/lost-found'
     | '/front-office/reports'
     | '/front-office/rooms'
     | '/front-office/tasks'
     | '/housekeeping/assignments'
+    | '/housekeeping/follow-ups'
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
     | '/maintenance/assignments'
+    | '/maintenance/follow-ups'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/follow-ups'
     | '/manager/lost-found'
     | '/manager/reports'
     | '/manager/rooms'
@@ -288,18 +328,22 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/follow-ups'
     | '/front-office/lost-found'
     | '/front-office/reports'
     | '/front-office/rooms'
     | '/front-office/tasks'
     | '/housekeeping/assignments'
+    | '/housekeeping/follow-ups'
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
     | '/maintenance/assignments'
+    | '/maintenance/follow-ups'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/follow-ups'
     | '/manager/lost-found'
     | '/manager/reports'
     | '/manager/rooms'
@@ -316,18 +360,22 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/front-office/conversations'
+    | '/front-office/follow-ups'
     | '/front-office/lost-found'
     | '/front-office/reports'
     | '/front-office/rooms'
     | '/front-office/tasks'
     | '/housekeeping/assignments'
+    | '/housekeeping/follow-ups'
     | '/housekeeping/reports'
     | '/housekeeping/rooms'
     | '/housekeeping/tasks'
     | '/maintenance/assignments'
+    | '/maintenance/follow-ups'
     | '/maintenance/issues'
     | '/maintenance/tasks'
     | '/manager/conversations'
+    | '/manager/follow-ups'
     | '/manager/lost-found'
     | '/manager/reports'
     | '/manager/rooms'
@@ -345,18 +393,22 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   FrontOfficeConversationsRoute: typeof FrontOfficeConversationsRoute
+  FrontOfficeFollowUpsRoute: typeof FrontOfficeFollowUpsRoute
   FrontOfficeLostFoundRoute: typeof FrontOfficeLostFoundRoute
   FrontOfficeReportsRoute: typeof FrontOfficeReportsRoute
   FrontOfficeRoomsRoute: typeof FrontOfficeRoomsRoute
   FrontOfficeTasksRoute: typeof FrontOfficeTasksRoute
   HousekeepingAssignmentsRoute: typeof HousekeepingAssignmentsRoute
+  HousekeepingFollowUpsRoute: typeof HousekeepingFollowUpsRoute
   HousekeepingReportsRoute: typeof HousekeepingReportsRoute
   HousekeepingRoomsRoute: typeof HousekeepingRoomsRoute
   HousekeepingTasksRoute: typeof HousekeepingTasksRoute
   MaintenanceAssignmentsRoute: typeof MaintenanceAssignmentsRoute
+  MaintenanceFollowUpsRoute: typeof MaintenanceFollowUpsRoute
   MaintenanceIssuesRoute: typeof MaintenanceIssuesRoute
   MaintenanceTasksRoute: typeof MaintenanceTasksRoute
   ManagerConversationsRoute: typeof ManagerConversationsRoute
+  ManagerFollowUpsRoute: typeof ManagerFollowUpsRoute
   ManagerLostFoundRoute: typeof ManagerLostFoundRoute
   ManagerReportsRoute: typeof ManagerReportsRoute
   ManagerRoomsRoute: typeof ManagerRoomsRoute
@@ -462,6 +514,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ManagerLostFoundRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/manager/follow-ups': {
+      id: '/manager/follow-ups'
+      path: '/manager/follow-ups'
+      fullPath: '/manager/follow-ups'
+      preLoaderRoute: typeof ManagerFollowUpsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/manager/conversations': {
       id: '/manager/conversations'
       path: '/manager/conversations'
@@ -481,6 +540,13 @@ declare module '@tanstack/react-router' {
       path: '/maintenance/issues'
       fullPath: '/maintenance/issues'
       preLoaderRoute: typeof MaintenanceIssuesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/maintenance/follow-ups': {
+      id: '/maintenance/follow-ups'
+      path: '/maintenance/follow-ups'
+      fullPath: '/maintenance/follow-ups'
+      preLoaderRoute: typeof MaintenanceFollowUpsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/maintenance/assignments': {
@@ -509,6 +575,13 @@ declare module '@tanstack/react-router' {
       path: '/housekeeping/reports'
       fullPath: '/housekeeping/reports'
       preLoaderRoute: typeof HousekeepingReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/housekeeping/follow-ups': {
+      id: '/housekeeping/follow-ups'
+      path: '/housekeeping/follow-ups'
+      fullPath: '/housekeeping/follow-ups'
+      preLoaderRoute: typeof HousekeepingFollowUpsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/housekeeping/assignments': {
@@ -546,6 +619,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FrontOfficeLostFoundRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/front-office/follow-ups': {
+      id: '/front-office/follow-ups'
+      path: '/front-office/follow-ups'
+      fullPath: '/front-office/follow-ups'
+      preLoaderRoute: typeof FrontOfficeFollowUpsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/front-office/conversations': {
       id: '/front-office/conversations'
       path: '/front-office/conversations'
@@ -561,18 +641,22 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   FrontOfficeConversationsRoute: FrontOfficeConversationsRoute,
+  FrontOfficeFollowUpsRoute: FrontOfficeFollowUpsRoute,
   FrontOfficeLostFoundRoute: FrontOfficeLostFoundRoute,
   FrontOfficeReportsRoute: FrontOfficeReportsRoute,
   FrontOfficeRoomsRoute: FrontOfficeRoomsRoute,
   FrontOfficeTasksRoute: FrontOfficeTasksRoute,
   HousekeepingAssignmentsRoute: HousekeepingAssignmentsRoute,
+  HousekeepingFollowUpsRoute: HousekeepingFollowUpsRoute,
   HousekeepingReportsRoute: HousekeepingReportsRoute,
   HousekeepingRoomsRoute: HousekeepingRoomsRoute,
   HousekeepingTasksRoute: HousekeepingTasksRoute,
   MaintenanceAssignmentsRoute: MaintenanceAssignmentsRoute,
+  MaintenanceFollowUpsRoute: MaintenanceFollowUpsRoute,
   MaintenanceIssuesRoute: MaintenanceIssuesRoute,
   MaintenanceTasksRoute: MaintenanceTasksRoute,
   ManagerConversationsRoute: ManagerConversationsRoute,
+  ManagerFollowUpsRoute: ManagerFollowUpsRoute,
   ManagerLostFoundRoute: ManagerLostFoundRoute,
   ManagerReportsRoute: ManagerReportsRoute,
   ManagerRoomsRoute: ManagerRoomsRoute,
