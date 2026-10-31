@@ -1,3 +1,4 @@
+import { createGuestTask, guestReplyNeedsReview } from '../operations/guestHandoffs.js';
 import { savePmsHandoff } from '../pms/pmsHandoff.js';
 import { verificationHandoffReply } from '../pms/guestVerification.js';
 import crypto from 'node:crypto';
@@ -534,6 +535,14 @@ export async function processGuestMessageAI({
   let room = extractRoomNumber(messageText, null, null) || 'not provided';
   const timeStr = getClockTime();
 
+  // A department's completion is not the guest's confirmation. Keep later guest
+  // messages with Front Office instead of making another task or declaring success.
+  const awaiting = await guestReplyNeedsReview(database, effectiveHotelId, conversationId, messageText);
+  if (awaiting) return { handled: true, requiresApproval: true, aiStatus: 'escalated', type: 'guest_follow_up',
+    suggestedReply: 'Thank you for the update. Our Front Office team will check this with you and the responsible department.',
+    replyText: 'Thank you for the update. Our Front Office team will check this with you and the responsible department.',
+    escalation: { kind: 'guest_follow_up', reason: 'Guest replied while a department handoff needs Front Office review', urgency: 'High', raisedAt: timeStr, suggested: 'Review the guest reply and resolve or reopen the original work.' } };
+
   if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY) {
     const verificationContext = { hotelId: effectiveHotelId, conversationId };
     if (await guestVerification.validBinding(verificationContext)) {
@@ -605,7 +614,7 @@ export async function processGuestMessageAI({
       const taskId = `t-${crypto.randomUUID()}`;
 
       // Create Task for Maintenance
-      const task = await database.task.create({
+      const task = await createGuestTask(database, {
         data: {
           id: taskId,
           hotelId: effectiveHotelId,
@@ -712,7 +721,7 @@ export async function processGuestMessageAI({
       const dueTime = getDueTime(pattern.priority === 'High' ? 15 : 25);
 
       // Create Task in Database
-      const task = await database.task.create({
+      const task = await createGuestTask(database, {
         data: {
           id: taskId,
           hotelId: effectiveHotelId,

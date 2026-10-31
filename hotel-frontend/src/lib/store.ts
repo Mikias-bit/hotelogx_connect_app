@@ -304,35 +304,22 @@ export function dismissToast(id: string) {
 
 /* --------------------------------------------------------- conversations -- */
 
-export function takeOver(conversationId: string, staffName: string) {
-  set((s) => ({
-    conversations: s.conversations.map((c) =>
-      c.id === conversationId ? { ...c, aiStatus: "human-takeover", escalation: undefined, unread: 0 } : c,
-    ),
-  }));
-  appendMessage(conversationId, {
-    author: "system",
-    channel: "internal",
-    at: clockNow(),
-    body: `${staffName} took over this conversation. The AI will stop replying until it is handed back.`,
-  });
-  pushActivity({ kind: "escalation", text: `${staffName} took over a conversation`, meta: "Dashboard" });
-  toast("You are handling this conversation", "ai", "The AI has paused automatic replies");
-  api.toggleTakeover(conversationId, "human-takeover");
+export async function takeOver(conversationId: string, staffName: string) {
+  try {
+    const result = await api.toggleTakeover(conversationId, 'human-takeover');
+    if (!result) throw new Error('Takeover could not be confirmed.');
+    set(s => ({ conversations: s.conversations.map(c => c.id === conversationId ? { ...c, aiStatus: 'human-takeover', unread: 0 } : c) }));
+    toast('You are handling this conversation', 'ai', staffName);
+  } catch (error) { toast('Takeover failed', 'urgent', error instanceof Error ? error.message : 'Please refresh'); }
 }
 
-export function returnToAi(conversationId: string) {
-  set((s) => ({
-    conversations: s.conversations.map((c) => (c.id === conversationId ? { ...c, aiStatus: "ai-handling" } : c)),
-  }));
-  appendMessage(conversationId, {
-    author: "system",
-    channel: "internal",
-    at: clockNow(),
-    body: "Handed back to the AI. Automatic replies resumed for this guest.",
-  });
-  toast("Returned to the AI", "ai", "Automatic replies resumed");
-  api.toggleTakeover(conversationId, "ai-handling");
+export async function returnToAi(conversationId: string) {
+  try {
+    const result = await api.toggleTakeover(conversationId, 'ai-handling');
+    if (!result) throw new Error('Review outstanding guest follow-ups first.');
+    set(s => ({ conversations: s.conversations.map(c => c.id === conversationId ? { ...c, aiStatus: 'ai-handling' } : c) }));
+    toast('Returned to the AI', 'ai');
+  } catch (error) { toast('Front Office review required', 'attend', error instanceof Error ? error.message : 'Unable to resume AI'); }
 }
 
 export function sendReply(conversationId: string, body: string, as: "ai" | "staff", staffName?: string) {
@@ -399,16 +386,13 @@ export function escalateConversation(conversationId: string, reason: string) {
   api.escalateConversation(conversationId, reason);
 }
 
-export function resolveConversation(conversationId: string) {
-  const conversation = store.state.conversations.find((c) => c.id === conversationId);
-  set((s) => ({
-    conversations: s.conversations.map((c) =>
-      c.id === conversationId ? { ...c, aiStatus: "resolved", escalation: undefined, unread: 0 } : c,
-    ),
-  }));
-  pushActivity({ kind: "ai-reply", text: `Resolved the conversation with ${conversation?.guest.name ?? "the guest"}`, meta: "Dashboard" });
-  toast("Marked as resolved", "good");
-  api.resolveConversation(conversationId);
+export async function resolveConversation(conversationId: string) {
+  try {
+    const result = await api.resolveConversation(conversationId);
+    if (!result) throw new Error('Conversation could not be closed. Review its guest follow-ups.');
+    set(s => ({ conversations: s.conversations.map(c => c.id === conversationId ? { ...c, aiStatus: 'resolved', unread: 0 } : c) }));
+    toast('Marked as resolved', 'good');
+  } catch (error) { toast('Conversation remains open', 'urgent', error instanceof Error ? error.message : 'Unable to close'); }
 }
 
 export function markRead(conversationId: string) {
@@ -464,6 +448,7 @@ export async function createTask(input: {
   assignee?: string;
   source: TaskSource;
   conversationId?: string;
+  guestReported?: boolean;
 }): Promise<string | null> {
   const result = await api.createTask(input);
   if (!result) {
@@ -502,16 +487,6 @@ export async function createTask(input: {
   return task.id;
 }
 
-const guestClosingLine: Record<Department, (room?: string) => string> = {
-  Housekeeping: () => "That is taken care of now — housekeeping has confirmed it. Anything else I can arrange?",
-  Maintenance: (room) => `Our technician has finished the work${room ? ` in ${room}` : ""}. Please let me know if anything is still not right.`,
-  "Front Office": () => "All arranged — reception has confirmed it for you.",
-  "Guest Request": () => "Your request has been completed. Let me know if you need anything else.",
-  VIP: () => "Everything is prepared for your arrival. We look forward to welcoming you.",
-  Billing: () => "Your invoice has been corrected and a copy is on its way by email.",
-  "Follow-up": () => "This is now closed on our side — thank you for your patience.",
-};
-
 export async function setTaskStatus(taskId: string, status: TaskStatus, note?: string) {
   const task = store.state.tasks.find((t) => t.id === taskId);
   if (!task) return;
@@ -536,22 +511,12 @@ export async function setTaskStatus(taskId: string, status: TaskStatus, note?: s
     ),
   }));
 
+  window.dispatchEvent(new Event('hotelogx:handoffs-updated'));
   window.dispatchEvent(new Event('hotelogx:readiness-updated'));
   if (task.id.startsWith('rt-')) window.dispatchEvent(new Event('hotelogx:operations-updated'));
 
   if (status === "Completed") {
     pushActivity({ kind: "task", text: `Completed — ${task.title}${task.room ? ` (${task.room})` : ""}`, meta: task.department });
-    if (task.conversationId && !["Housekeeping", "Maintenance"].includes(task.department)) {
-      appendMessage(task.conversationId, {
-        author: "ai",
-        channel: store.state.conversations.find((c) => c.id === task.conversationId)?.primaryChannel ?? "whatsapp",
-        at: clockNow(),
-        confidence: 0.97,
-        body: guestClosingLine[task.department](task.room),
-      });
-      toast("Task completed — guest informed automatically", "good", task.title);
-      return;
-    }
     toast("Task completed", "good", task.title);
     return;
   }
@@ -1451,7 +1416,7 @@ export function channelLabel(channel: Channel | string) {
 
 export const selectors = {
   openTasks: (s: AppState) => s.tasks.filter((t) => t.status !== "Completed"),
-  escalations: (s: AppState) => s.conversations.filter((c) => c.aiStatus === "escalated"),
+  escalations: (s: AppState) => s.conversations.filter((c) => c.aiStatus === "escalated" || c.guestFollowUpPending),
   openIssues: (s: AppState) => s.issues.filter((i) => i.status !== "Completed"),
   urgentIssues: (s: AppState) => s.issues.filter((i) => i.status !== "Completed" && i.priority === "Urgent"),
   roomsToClean: (s: AppState) => s.rooms.filter((r) => r.status === "Dirty"),

@@ -25,6 +25,8 @@ export function TaskComposer({
   const [priority, setPriority] = useState<Priority>("Normal");
   const [assignee, setAssignee] = useState("");
   const [due, setDue] = useState("");
+  const [guestReported, setGuestReported] = useState(!!defaults?.conversationId);
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
 
   const hkCleaners = useApp(selectors.housekeepingTeam);
   const users = useApp((s) => s.users);
@@ -66,6 +68,7 @@ export function TaskComposer({
             <span className={label}>Detail (optional)</span>
             <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={2} className={`${field} resize-none`} />
           </label>
+          <label className="block text-sm"><input type="checkbox" checked={guestReported} onChange={e => setGuestReported(e.target.checked)} /> Guest-reported problem: require Front Office follow-up</label>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
@@ -120,9 +123,10 @@ export function TaskComposer({
             Cancel
           </Button>
           <Button
-            disabled={!title.trim()}
-            onClick={() => {
-              createTask({
+            disabled={busy || !title.trim()}
+            onClick={async () => {
+              setBusy(true); setError('');
+              try { const id = await createTask({
                 title: title.trim(),
                 detail: detail.trim() || undefined,
                 room: room.trim() || undefined,
@@ -133,12 +137,17 @@ export function TaskComposer({
                 assignee: department === "Maintenance" ? undefined : assignee || undefined,
                 source,
                 conversationId: defaults?.conversationId,
+                guestReported,
               });
+              if (!id) throw new Error('Task could not be created');
+              window.dispatchEvent(new Event('hotelogx:handoffs-updated'));
               onClose();
+              } catch (err) { setError(err instanceof Error ? err.message : 'Task could not be created'); } finally { setBusy(false); }
             }}
           >
             Create task
           </Button>
+          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
         </div>
       </div>
     </div>

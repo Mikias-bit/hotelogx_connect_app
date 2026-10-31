@@ -1,4 +1,5 @@
 import { assertUnblocked, carryNeedsReview, workBlockers } from '../operations/blockers.js';
+import { guestWorkStatusChanged } from '../operations/guestHandoffs.js';
 import { assertNoOpenRepairs } from './housekeepingRepairs.js';
 import { readReports, allowedKinds, hash } from './reportService.js';
 import { planData, planToken, planPriority, reconcileHousekeeping } from './housekeepingPlan.js';
@@ -120,7 +121,8 @@ export async function updateReportTask(db, user, id, input) {
       ...(input.status === 'New' ? { assignmentId: null, assignedWorkerId: null, assignedAt: null, acceptedAt: null, startedAt: null, problemType: null, problemNote: null } : {}),
       ...(input.status === 'In Progress' && !row.startedAt ? { startedAt: new Date() } : {}), completedAt: input.status === 'Completed' ? new Date() : null } });
     if (changed.count !== 1) failOperation('Task changed; refresh first', 409);
+    await guestWorkStatusChanged(tx, 'report', row, input.status, user.id);
     await tx.reportTaskEvent.create({ data: { hotelId: user.hotelId, taskId: id, actor: user.id, text: String(input.note || `Marked ${input.status}`).slice(0, 2000) } });
-  });
+  }, { timeout: 30000 });
   return taskView(await db.reportTask.findUnique({ where: { id } }), row.assignedWorkerId ? await db.housekeepingWorker.findFirst({ where: { id: row.assignedWorkerId, hotelId: user.hotelId } }) : null, snapshot.today);
 }

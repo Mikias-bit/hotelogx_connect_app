@@ -1,3 +1,4 @@
+import { GuestHandoffWork } from './GuestHandoffs';
 import {
   Bot,
   CalendarClock,
@@ -32,7 +33,7 @@ const sourceIcon: Record<string, React.ComponentType<{ className?: string }>> = 
   pms: Server,
 };
 
-export function TaskRow({ task, onOpen, showDepartment = true }: { task: Task; onOpen?: (task: Task) => void; showDepartment?: boolean }) {
+export function TaskRow({ task, onOpen, showDepartment = true, showGuestFollowUp = false }: { task: Task; onOpen?: (task: Task) => void; showDepartment?: boolean; showGuestFollowUp?: boolean }) {
   const user = useCurrentUser();
   const canUpdate = task.department !== "Maintenance" && !task.stale && !task.carryReviewRequired && !task.blockers?.length && !task.sourceReviewRequired && !(task.notBefore && +new Date(task.notBefore) > Date.now()) && !(['Daily report', 'Operational change'].includes(task.source) && task.department === 'Housekeeping' && user?.role === 'front-office');
   const SourceIcon = (task?.source ? sourceIcon[task.source] : undefined) ?? DefaultSourceIcon;
@@ -66,6 +67,7 @@ export function TaskRow({ task, onOpen, showDepartment = true }: { task: Task; o
             <Badge tone={priorityTone(task.priority)}>{task.priority}</Badge>
             {showDepartment && <Badge tone="mute">{task.department}</Badge>}
           </div>
+          {showGuestFollowUp && (!task.id.startsWith('rt-') || task.department === 'Housekeeping') && <GuestHandoffWork kind={task.id.startsWith('rt-') ? 'report' : 'task'} id={task.id} conversationId={task.conversationId} />}
           {task.detail && <p className="mt-1 line-clamp-1 text-[12.5px] text-ink-3">{task.detail}</p>}
           <p className="tnum mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[10.5px] text-ink-4">
             <span className="inline-flex items-center gap-1">

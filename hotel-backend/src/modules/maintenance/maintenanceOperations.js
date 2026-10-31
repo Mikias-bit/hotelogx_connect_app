@@ -1,4 +1,5 @@
 import { assertUnblocked, draftBlocker, addBlockerNote, workBlockers, hotelDay } from '../operations/blockers.js';
+import { guestWorkStatusChanged } from '../operations/guestHandoffs.js';
 import { repairStatusChanged } from '../reports/housekeepingRepairs.js';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 
@@ -143,7 +144,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
         await audit(tx, row, user.id, `Assigned to ${worker.name}; awaiting acceptance`, 'dashboard');
       }
       return { assignment, worker };
-    });
+    }, { timeout: 30000 });
     const result = replay ? assignment : await notify(assignment, worker);
     publish(user.hotelId); return result;
   }
@@ -164,9 +165,10 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
       await tx[kind].updateMany({ where: scope(user.hotelId, kind, { id, version: row.version }), data });
       if (status === 'Waiting Parts') await draftBlocker(tx, { hotelId: user.hotelId, kind, work: row, type: 'parts', actor: user.id, requestKey: `parts-${randomUUID()}`, description: note.trim() });
       if (kind === 'issue') await repairStatusChanged(tx, row, status, user.id);
+      await guestWorkStatusChanged(tx, kind, row, status, user.id);
       await audit(tx, { ...row, kind }, user.id, `Staff marked ${status}${note ? ': ' + note : ''}`, 'dashboard');
       return tx[kind].findFirst({ where: scope(user.hotelId, kind, { id }), include: include(kind) });
-    });
+    }, { timeout: 30000 });
     // Completing one repair never completes other tickets or releases a PMS room.
     publish(user.hotelId); return result;
   }
@@ -218,12 +220,13 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
             changed++;
             if (['parts', 'contractor', 'failed', 'dnd', 'inside'].includes(action.action)) await draftBlocker(tx, { hotelId: worker.hotelId, kind: row.kind, work: row, type: action.action === 'failed' ? 'repair_failed' : action.action === 'inside' ? 'guest_inside' : action.action, actor: worker.id, requestKey: `wa-${receiptId}` });
             if (row.kind === 'issue') await repairStatusChanged(tx, row, status, worker.id);
+            await guestWorkStatusChanged(tx, row.kind, row, status, worker.id);
             await audit(tx, row, worker.id, `WhatsApp: ${status} by ${worker.name}`, 'whatsapp');
             if (['parts', 'help', 'contractor', 'failed', 'dnd', 'inside'].includes(action.action)) await tx.maintenanceWorker.update({ where: { id: worker.id }, data: { pendingProblemRef: `${row.assignmentId}|${ref(row)}` } });
           }
           if (changed && action.action === 'accept') await tx.maintenanceAssignment.updateMany({ where: { id: action.assignmentId, hotelId: worker.hotelId, workerId: worker.id }, data: { deliveryStatus: 'accepted', lastError: null } });
           if (changed && ['parts', 'help', 'contractor', 'failed', 'dnd', 'inside'].includes(action.action)) response = { text: 'Blocker recorded. Reply with the part, contractor, remaining fault or access instructions. The coordinator will schedule the owner and next action. Reply MAINTENANCE for other work.' };
-        });
+        }, { timeout: 30000 });
       } else if (worker.pendingProblemRef && text && !/^(tasks|maintenance)$/i.test(text)) {
         await db.$transaction(async tx => {
           await lock(tx, worker.hotelId);

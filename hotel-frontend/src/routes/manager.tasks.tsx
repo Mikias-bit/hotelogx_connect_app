@@ -1,3 +1,4 @@
+import { GuestHandoffList } from '@/components/GuestHandoffs';
 import { HousekeepingPlanButton } from '@/components/HousekeepingPlan';
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -106,6 +107,7 @@ function ManagerTasks() {
           </div>
         </div>
 
+        <GuestHandoffList />
         <Card pad={false}>
           {filtered.length === 0 ? (
             <div className="p-4">
@@ -114,7 +116,7 @@ function ManagerTasks() {
           ) : (
             <ul>
               {filtered.map((t) => (
-                <TaskRow key={t.id} task={t} />
+                <TaskRow showGuestFollowUp key={t.id} task={t} />
               ))}
             </ul>
           )}

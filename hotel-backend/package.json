@@ -27,6 +27,8 @@
     "test:operations:database": "node scripts/test-operations-database.mjs .env",
     "test:blockers": "node --test src/tests/operationalBlockers.test.js",
     "test:blockers:database": "node scripts/test-blockers-database.mjs .env",
+    "test:handoffs": "node --test src/tests/guestHandoffs.test.js",
+    "test:handoffs:database": "node scripts/test-handoffs-database.mjs .env",
     "test:verification": "node --test src/tests/guestVerification.test.js",
     "test:verification:database": "node scripts/test-verification-database.mjs .env",
     "test:whatsapp": "node --test src/tests/whatsappReal.test.js src/tests/whatsappCoexistence.test.js src/tests/whatsappWebhookHttp.test.js"

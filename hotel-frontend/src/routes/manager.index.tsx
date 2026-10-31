@@ -1,3 +1,4 @@
+import { GuestEscalationCount } from '@/components/GuestHandoffs';
 import { useReadiness } from '@/lib/useReadiness';
 import { OperationalDetails } from '@/components/OperationalDetails';
 import { useOperations } from '@/lib/useOperations';
@@ -193,16 +194,16 @@ function ManagerDashboard() {
           <StatCard label="VIPs" value={vipReady ? vipArrivalsCount : '—'} hint="View VIP guests" icon={Crown} tone="pine" delay={100} onClick={() => setDetail('vip')} />
           <StatCard label="Departure balances" value={balancesReady ? balanceCount : '—'} hint="Problems to review" icon={TriangleAlert} tone="attend" delay={110} emphasis={balancesReady && balanceCount > 0} onClick={() => setDetail('departure_bills')} />
           <StatCard label="Guest requests" value={guestRequests.length} hint="open right now" icon={MessageSquare} tone="ai" delay={120} />
-          <StatCard
+          <GuestEscalationCount count={escalations.length}>{count => <StatCard
             label="Escalations"
-            value={escalations.length}
+            value={count}
             hint="need a person"
             icon={TriangleAlert}
             tone="urgent"
             emphasis={escalations.length > 0}
             delay={160}
-            onClick={() => navigate({ to: "/manager/conversations" })}
-          />
+            onClick={() => navigate({ to: "/manager/conversations", search: { filter: "escalated" } })}
+          />}</GuestEscalationCount>
           <StatCard label="Open tasks" value={openTasks.length} hint="across 3 departments" icon={ClipboardList} tone="attend" delay={200} onClick={() => navigate({ to: "/manager/tasks" })} />
           <StatCard label="Maintenance" value={openIssues.length} hint={`${outOfService} rooms affected`} icon={Wrench} tone="attend" delay={240} />
         </div>

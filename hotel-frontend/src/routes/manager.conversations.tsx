@@ -6,11 +6,13 @@ import { useCurrentUser } from "@/lib/session";
 import { useApp } from "@/lib/store";
 
 export const Route = createFileRoute("/manager/conversations")({
+  validateSearch: (search: Record<string, unknown>): { filter?: 'escalated' } => ({ filter: search.filter === 'escalated' ? 'escalated' : undefined }),
   component: ManagerConversations,
 });
 
 function ManagerConversations() {
   const user = useCurrentUser();
+  const { filter } = Route.useSearch();
   const conversations = useApp((s) => s.conversations);
   const handled = conversations.filter((c) => c.aiStatus === "ai-handling" || c.aiStatus === "resolved").length;
 
@@ -27,7 +29,7 @@ function ManagerConversations() {
             </p>
           </div>
         </div>
-        <Inbox variant="manager" staffName={user?.name ?? "Manager"} />
+        <Inbox initialFilter={filter === "escalated" ? "Escalated" : "All"} variant="manager" staffName={user?.name ?? "Manager"} />
       </div>
     </AppShell>
   );

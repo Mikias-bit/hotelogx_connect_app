@@ -1,4 +1,5 @@
 import { draftBlocker, addBlockerNote, carryNeedsReview, workBlockers } from '../operations/blockers.js';
+import { guestWorkStatusChanged } from '../operations/guestHandoffs.js';
 import { beginHousekeepingRepair, describeHousekeepingRepair } from './housekeepingRepairs.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readReports } from './reportService.js';
@@ -145,6 +146,7 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
               const updated = await tx.reportTask.updateMany({ where: { id: row.id, hotelId: worker.hotelId, assignedWorkerId: worker.id, assignmentId: action.assignmentId, active: true, status: { in: from } }, data: changes });
               if (updated.count) {
                 changedCount++;
+                await guestWorkStatusChanged(tx, 'report', row, target, worker.id);
                 await tx.reportTaskEvent.create({ data: { hotelId: worker.hotelId, taskId: row.id, actor: worker.id, text: `WhatsApp: ${target}${target === 'Problem' ? ` (${action.action})` : ''}` } });
                 if (['dnd', 'inside', 'declined', 'supplies'].includes(action.action)) await draftBlocker(tx, { hotelId: worker.hotelId, kind: 'report', work: row, type: action.action === 'inside' ? 'guest_inside' : action.action, actor: worker.id, requestKey: `wa-${receiptId}` });
                 if (action.action === 'maintenance') await beginHousekeepingRepair(tx, row, worker.id);
@@ -152,7 +154,7 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
               }
             }
             if (target === 'Accepted' && changedCount) await tx.housekeepingAssignment.updateMany({ where: { id: action.assignmentId, hotelId: worker.hotelId, workerId: worker.id }, data: { deliveryStatus: 'accepted', lastError: null } });
-          });
+          }, { timeout: 30000 });
           if (target === 'Problem' && changedCount) response = { text: action.action === 'maintenance' ? 'Maintenance ticket created and linked to this task. Reply with a short fault description for the technician, or TASKS to continue.' : 'Blocker saved. Reply with details (guest instructions, declined service/alternative, or missing items). Your coordinator will record the owner and next follow-up time. TASKS shows other work.' };
         }
       } else if (worker.pendingProblemTaskId && message.text?.body && !/^(tasks|housekeeping)$/i.test(message.text.body.trim())) {

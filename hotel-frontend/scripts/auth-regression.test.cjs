@@ -23,6 +23,21 @@ function load(file, globals, modules = {}) {
   return context.exports;
 }
 
+test('guest handoff errors keep the conversation open; task completion creates no simulated guest reply', async () => {
+  class Store { constructor(value) { this.state = value; } setState(fn) { this.state = fn(this.state); } }
+  const f = fixture(); let mayResolve = false;
+  f.window.location.pathname = '/login';
+  const api = { resolveConversation: async () => { if (!mayResolve) throw new Error('Guest follow-ups are still open'); return { id: 'c', aiStatus: 'resolved' }; }, updateTaskStatus: async () => ({ id: 't', status: 'Completed', trail: [] }) };
+  const s = load('store.ts', { ...f, setTimeout: () => 0, setInterval: () => 0 }, {
+    '@tanstack/react-store': { Store }, './api': { api }, './data': { hotel: {}, planTiers: [], subscription: {} },
+    './onboarding': {}, './utils': { clockNow: () => 'now', uid: () => 'id', money: () => '' },
+  });
+  s.store.setState(state => ({ ...state, conversations: [{ id: 'c', aiStatus: 'escalated', guest: { name: 'Guest' }, messages: [], taskIds: ['t'] }], tasks: [{ id: 't', department: 'Front Office', conversationId: 'c', title: 'Guest problem', status: 'New', trail: [] }] }));
+  await s.resolveConversation('c'); assert.equal(s.store.state.conversations[0].aiStatus, 'escalated');
+  await s.setTaskStatus('t', 'Completed'); assert.equal(s.store.state.tasks[0].status, 'Completed'); assert.equal(s.store.state.conversations[0].messages.length, 0);
+  mayResolve = true; await s.resolveConversation('c'); assert.equal(s.store.state.conversations[0].aiStatus, 'resolved');
+});
+
 test('profile and Gmail requests with no token fail before calling the backend', async () => {
   const f = fixture(); let fetches = 0;
   f.localStorage.setItem('hotelogx.user.v1', '{"id":"cached"}');

@@ -1,3 +1,4 @@
+import { GuestHandoffWork } from './GuestHandoffs';
 import { BlockerControls } from './OperationalBlockers';
 import { useEffect, useRef, useState } from 'react';
 import { AppShell } from './AppShell';
@@ -56,7 +57,7 @@ function MaintenanceAssignmentBoard() {
         <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Select', 'Room / task', 'Status', 'Assigned to', 'Details', 'Staff action'].map(label => <th scope="col" className="border-b border-line p-2" key={label}>{label}</th>)}</tr></thead><tbody>
           {data.work.map(row => <tr key={`${row.kind}:${row.id}`}>
             <td className="border-b border-line-soft p-2"><input type="checkbox" aria-label={`Select ${row.title} ${row.room || ''}`} checked={chosen.some(item => key(item) === key(row))} disabled={busy || !!error || !eligible.some(item => key(item) === key(row))} onChange={e => setSelected(old => e.target.checked ? [...old, key(row)] : old.filter(value => value !== key(row)))} /></td>
-            <td className="min-w-44 border-b border-line-soft p-2"><strong>{row.room || 'General'}</strong><p>{row.title}</p><p className="text-xs text-ink-4">{row.kind === 'issue' ? 'Issue' : 'Follow-up task'} · {row.priority}</p></td>
+            <td className="min-w-44 border-b border-line-soft p-2"><strong>{row.room || 'General'}</strong><p>{row.title}</p><GuestHandoffWork kind={row.kind} id={row.id} /><p className="text-xs text-ink-4">{row.kind === 'issue' ? 'Issue' : 'Follow-up task'} · {row.priority}</p></td>
             <td className="border-b border-line-soft p-2"><Badge tone={statusTone(row.status)}>{row.status}</Badge></td>
             <td className="min-w-40 border-b border-line-soft p-2">{row.assignee || 'Unassigned'}{([['assignedAt', 'Assigned'], ['acceptedAt', 'Accepted'], ['startedAt', 'Started'], ['completedAt', 'Completed']] as const).map(([field, label]) => row[field] && <p key={field} className="text-xs text-ink-3">{label} {new Date(row[field]!).toLocaleString()}</p>)}</td>
             <td className="min-w-44 max-w-sm whitespace-pre-wrap border-b border-line-soft p-2">{row.detail}{row.status !== "Completed" && <BlockerControls work={{ workKind: row.kind, workId: row.id, workVersion: row.version }} blockers={row.blockers} timezone={data.timezone} reload={load} />}{row.linkedHousekeepingTaskIds?.length ? <p className="mt-2 text-xs">Linked housekeeping: {row.linkedHousekeepingTaskIds.join(", ")}</p> : null}{row.followUpTaskId && <p className="mt-2 text-xs">Housekeeping follow-up: {row.followUpTaskId}. Room inspection and release are still required.</p>}{row.problemNote && <p className="mt-1 text-attend">{row.problemNote}</p>}</td>

@@ -23,6 +23,7 @@ export async function saveHousekeepingChange(db, user, id, input) {
     if (old?.status === 'Completed') failOperation('Completed work is retained. Add a new follow-up task instead.', 409);
     if (input.cancel !== undefined && typeof input.cancel !== 'boolean') failOperation('Invalid cancellation');
     if (input.cancel && old) await assertUnblocked(tx, user.hotelId, 'report', [old.id]);
+    if (input.cancel && old && await tx.guestHandoff.findFirst({ where: { hotelId: user.hotelId, workKind: 'report', workId: old.id, state: { not: 'resolved' } } })) failOperation('Guest follow-up is still open. Review and resolve the guest issue before cancelling this work.', 409);
     if (input.cancel && !old) failOperation('Only an existing task can be cancelled');
     if (old?.sourceReviewRequired && !input.cancel && !['keep', 'adopt'].includes(input.sourceDecision)) failOperation('Review the changed morning plan before saving', 409);
     if (input.sourceDecision === 'adopt' && (!old?.sourcePresent || !old?.pendingSourceData)) failOperation('No replacement source instructions are available');

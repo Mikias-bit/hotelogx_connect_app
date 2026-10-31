@@ -220,6 +220,47 @@ model Task {
   @@index([hotelId])
 }
 
+model GuestHandoff {
+  id String @id @default(uuid())
+  hotelId String
+  workKind String
+  workId String
+  conversationId String?
+  state String @default("open")
+  cycle Int @default(0)
+  workCompletedAt DateTime?
+  workCompletedBy String?
+  foInformedAt DateTime?
+  foInformedBy String?
+  contactStatus String @default("pending")
+  contactedAt DateTime?
+  contactedBy String?
+  contactChannel String?
+  contactNote String?
+  resolvedAt DateTime?
+  resolvedBy String?
+  resolutionNote String?
+  version Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([hotelId, workKind, workId])
+  @@index([hotelId, state])
+  @@index([hotelId, conversationId])
+}
+
+model GuestHandoffEvent {
+  id String @id @default(uuid())
+  hotelId String
+  handoffId String
+  cycle Int
+  actor String
+  action String
+  note String
+  data Json @default("{}")
+  at DateTime @default(now())
+  @@index([hotelId, handoffId, at])
+}
+
 model TaskTrail {
   id     Int     @id @default(autoincrement())
   taskId String

@@ -1,3 +1,4 @@
+import { GuestHandoffWork } from './GuestHandoffs';
 import { useNavigate } from '@tanstack/react-router';
 import { Badge, Button, Card, priorityTone, statusTone } from './ui';
 import type { MaintenanceWork } from '@/lib/types';
@@ -17,6 +18,7 @@ export function MaintenanceWorkCard({ work }: { work: MaintenanceWork }) {
       </div>
       {user && ['manager', 'maintenance'].includes(user.role) && <Button size="sm" variant="outline" onClick={() => navigate({ to: '/maintenance/assignments' })}>Manage</Button>}
     </div>
+    <GuestHandoffWork kind={work.kind} id={work.id} />
     {(work.updates?.length || work.trail?.length || 0) > 0 && <details className="mt-3 border-t border-line pt-2 text-[12px] text-ink-3"><summary className="cursor-pointer">Activity</summary><ul className="mt-2 space-y-1">{(work.updates || work.trail || []).map((event, i) => <li key={i}>{event.at} · {event.text}</li>)}</ul></details>}
   </Card>;
 }

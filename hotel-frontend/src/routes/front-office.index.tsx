@@ -1,3 +1,4 @@
+import { GuestEscalationCount } from '@/components/GuestHandoffs';
 import { useReadiness } from '@/lib/useReadiness';
 import { useState } from 'react';
 import { OperationalDetails } from '@/components/OperationalDetails';
@@ -106,16 +107,16 @@ function FrontOfficeDashboard() {
           <StatCard label="Open requests" value={guestRequests.length} hint="in-house guests" icon={MessageSquare} tone="ai" delay={120} />
           <StatCard label="VIPs" value={vipReady ? vipArrivalsCount : '—'} hint="View VIP guests" icon={Crown} tone="pine" delay={160} onClick={() => setDetail('vip')} />
           <StatCard label="Departure balances" value={balancesReady ? balanceCount : '—'} hint="Problems to review" icon={TriangleAlert} tone="attend" delay={180} emphasis={balancesReady && balanceCount > 0} onClick={() => setDetail('departure_bills')} />
-          <StatCard
+          <GuestEscalationCount count={escalations.length}>{count => <StatCard
             label="Escalated"
-            value={escalations.length}
+            value={count}
             hint="need a person"
             icon={TriangleAlert}
             tone="urgent"
             emphasis={escalations.length > 0}
             delay={200}
             onClick={() => navigate({ to: "/front-office/conversations", search: { filter: "escalated" } })}
-          />
+          />}</GuestEscalationCount>
         </div>
 
         <Briefing

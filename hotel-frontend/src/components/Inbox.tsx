@@ -1,3 +1,4 @@
+import { GuestHandoffList } from './GuestHandoffs';
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -78,9 +79,9 @@ function matches(conversation: Conversation, filter: Filter) {
     case "Human takeover":
       return conversation.aiStatus === "human-takeover";
     case "Escalated":
-      return conversation.aiStatus === "escalated";
+      return conversation.aiStatus === "escalated" || !!conversation.guestFollowUpPending;
     case "Unresolved":
-      return conversation.aiStatus !== "resolved";
+      return conversation.aiStatus !== "resolved" || !!conversation.guestFollowUpPending;
     case "WhatsApp":
       return channels.includes("whatsapp");
     case "Email":
@@ -242,13 +243,14 @@ function GuestContext({
   onCreateTask: () => void;
 }) {
   const taskIds = conversation.taskIds || [];
-  const tasks = useApp((s) => s.tasks.filter((t) => taskIds.includes(t.id)));
+  const tasks = useApp((s) => s.tasks.filter((t) => (taskIds.includes(t.id) || t.conversationId === conversation.id)));
   const guest = conversation.guest || ({} as any);
   const reservation = guest.reservation || { number: "—" };
   const tags = guest.tags || [];
 
   return (
     <div className="space-y-5">
+      <GuestHandoffList conversationId={conversation.id} />
       {(conversation.aiStatus === 'escalated' || conversation.aiStatus === 'human-takeover') && (
         <details className="rounded-[10px] border border-line bg-paper/70 p-3" open={conversation.escalation?.kind === 'reservation_verification' || conversation.escalation?.kind === 'pms_approval' || conversation.escalation?.kind === 'pms_review'}>
           <summary className="cursor-pointer text-[13px] font-medium">Reservation check &amp; approvals</summary>
@@ -551,6 +553,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
       return (
         <div className="space-y-4">
           <FilterBar active={filter} onChange={setFilter} counts={counts} />
+          {filter === 'Escalated' && <GuestHandoffList unlinkedOnly />}
           <div className="overflow-hidden rounded-card border border-line bg-surface">
             <div className="hidden grid-cols-[1.4fr_0.8fr_0.6fr_2fr_0.9fr_0.7fr_0.5fr] gap-3 border-b border-line bg-paper/60 px-4 py-2.5 text-[10.5px] font-semibold tracking-[0.1em] text-ink-4 uppercase lg:grid">
               <span>Guest</span>
@@ -645,6 +648,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
       <div className="flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-surface">
         <div className="border-b border-line px-3 py-2.5">
           <FilterBar active={filter} onChange={setFilter} counts={counts} />
+          {filter === 'Escalated' && <GuestHandoffList unlinkedOnly />}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {list.length === 0 && <Empty title="Nothing here" hint="Try another filter." />}

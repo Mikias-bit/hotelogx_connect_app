@@ -1,3 +1,4 @@
+import { GuestHandoffList } from '@/components/GuestHandoffs';
 import { HousekeepingPlanButton } from '@/components/HousekeepingPlan';
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -80,6 +81,7 @@ function FrontOfficeTasks() {
           ))}
         </div>
 
+        <GuestHandoffList />
         <Card pad={false}>
           {list.length === 0 ? (
             <div className="p-4">
@@ -88,7 +90,7 @@ function FrontOfficeTasks() {
           ) : (
             <ul>
               {list.map((t) => (
-                <TaskRow key={t.id} task={t} />
+                <TaskRow showGuestFollowUp key={t.id} task={t} />
               ))}
             </ul>
           )}

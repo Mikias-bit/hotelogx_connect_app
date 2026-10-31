@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ensureGuestHandoff } from '../operations/guestHandoffs.js';
 import { maintenanceOperations } from '../maintenance/runtime.js';
 import { realtimeService } from '../../services/realtimeService.js';
 import { prisma } from '../../config/database.js';
@@ -139,6 +140,7 @@ export const createIssue = async (req, res, next) => {
         },
       });
 
+      if (req.body.guestReported === true) await ensureGuestHandoff(tx, 'issue', created, req.user.id, { force: true, conversationId: req.body.conversationId });
       return created;
     });
 

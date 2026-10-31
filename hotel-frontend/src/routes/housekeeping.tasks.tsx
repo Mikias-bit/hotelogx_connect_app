@@ -49,7 +49,7 @@ function HousekeepingTasks() {
           ) : (
             <ul>
               {tasks.map((t) => (
-                <TaskRow key={t.id} task={t} showDepartment={false} />
+                <TaskRow showGuestFollowUp key={t.id} task={t} showDepartment={false} />
               ))}
             </ul>
           )}

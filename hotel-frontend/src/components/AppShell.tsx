@@ -1,3 +1,4 @@
+import { GuestHandoffProvider } from '@/lib/useGuestHandoffs';
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
@@ -236,7 +237,7 @@ export function AppShell({
           </header>
 
           <main className={cn(flush ? "" : "px-4 py-5 sm:px-6 sm:py-7", !wide && !flush && "mx-auto max-w-[1180px]")}>
-            {children}
+            <GuestHandoffProvider>{children}</GuestHandoffProvider>
           </main>
         </div>
       </div>

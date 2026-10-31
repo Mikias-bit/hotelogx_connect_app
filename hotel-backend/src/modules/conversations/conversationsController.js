@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database.js';
+import { assertGuestHandoffsResolved, handoffLock } from '../operations/guestHandoffs.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 import { emailService } from '../email/emailService.js';
 import { sendMetaWhatsAppMessage } from '../whatsapp/whatsappController.js';
@@ -106,6 +107,8 @@ export const getConversations = async (req, res, next) => {
       },
     });
 
+    const pendingHandoffs = await prisma.guestHandoff.findMany({ where: { hotelId, state: { in: ['handoff', 'reopened'] } }, select: { conversationId: true } });
+    const pendingIds = new Set(pendingHandoffs.map(h => h.conversationId));
     const parsed = conversations.map((c) => {
       let resObj = c.guest?.reservations?.[0] || null;
       if (!resObj && allHotelReservations.length > 0) {
@@ -119,6 +122,7 @@ export const getConversations = async (req, res, next) => {
 
       return {
         ...c,
+        guestFollowUpPending: pendingIds.has(c.id),
         channels: c.primaryChannel ? [c.primaryChannel] : ['whatsapp'],
         knowledgeUsed: safeJsonParse(c.knowledgeUsed, []),
         upsellIdeas: safeJsonParse(c.upsellIdeas, []),
@@ -185,6 +189,7 @@ export const getConversationById = async (req, res, next) => {
 
     const parsed = {
       ...conversation,
+      guestFollowUpPending: !!await prisma.guestHandoff.findFirst({ where: { hotelId, conversationId: id, state: { in: ['handoff', 'reopened'] } } }),
       channels: conversation.primaryChannel ? [conversation.primaryChannel] : ['whatsapp'],
       knowledgeUsed: safeJsonParse(conversation.knowledgeUsed, []),
       upsellIdeas: safeJsonParse(conversation.upsellIdeas, []),
@@ -380,11 +385,13 @@ export const toggleTakeover = async (req, res, next) => {
     }
 
     const newStatus = aiStatus || (conv.aiStatus === 'ai-handling' ? 'human-takeover' : 'ai-handling');
+    if (!['human-takeover', 'ai-handling'].includes(newStatus)) return errorResponse(res, 'Choose a valid takeover mode', 400);
 
-    const updated = await prisma.conversation.update({
-      where: { id },
-      data: { aiStatus: newStatus },
-    });
+    const updated = await prisma.$transaction(async tx => {
+      await handoffLock(tx, hotelId);
+      if (newStatus === 'ai-handling') await assertGuestHandoffsResolved(tx, hotelId, id);
+      return tx.conversation.update({ where: { id }, data: { aiStatus: newStatus } });
+    }, { timeout: 30000 });
 
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -402,6 +409,7 @@ export const toggleTakeover = async (req, res, next) => {
 
     return successResponse(res, { id, aiStatus: updated.aiStatus }, `AI Mode updated to ${updated.aiStatus}`);
   } catch (error) {
+    if (error.status) return errorResponse(res, error.message, error.status);
     next(error);
   }
 };
@@ -470,12 +478,16 @@ export const resolveConversation = async (req, res, next) => {
       return errorResponse(res, 'Conversation not found', 404);
     }
 
-    const updated = await prisma.conversation.update({
+    await prisma.$transaction(async tx => {
+      await handoffLock(tx, hotelId);
+      await assertGuestHandoffsResolved(tx, hotelId, id);
+      return tx.conversation.update({
       where: { id },
       data: {
         aiStatus: 'resolved',
         unread: 0,
       },
+      });
     });
 
     const now = new Date();
@@ -494,6 +506,7 @@ export const resolveConversation = async (req, res, next) => {
 
     return successResponse(res, { id, aiStatus: 'resolved' }, 'Conversation resolved');
   } catch (error) {
+    if (error.status) return errorResponse(res, error.message, error.status);
     next(error);
   }
 };

@@ -1,4 +1,5 @@
 import { maintenanceOperations } from '../maintenance/runtime.js';
+import { createGuestTask, guestWorkStatusChanged, handoffLock } from '../operations/guestHandoffs.js';
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 import { readOperations, updateReportTask } from '../reports/reportOperations.js';
@@ -85,7 +86,7 @@ export const createTask = async (req, res, next) => {
       : 'Normal';
     const creatorName = req.user?.name || source || 'Manager';
 
-    const task = await prisma.task.create({
+    const task = await createGuestTask(prisma, {
       data: {
         id,
         hotelId,
@@ -112,7 +113,7 @@ export const createTask = async (req, res, next) => {
         },
       },
       include: { trail: true },
-    });
+    }, req.user.id, { force: req.body.guestReported === true });
 
     // Record activity
     await prisma.activityItem.create({
@@ -166,11 +167,18 @@ export const updateTaskStatus = async (req, res, next) => {
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const updated = await prisma.task.update({
+    const updated = await prisma.$transaction(async tx => {
+      await handoffLock(tx, hotelId);
+      const fresh = await tx.task.findFirst({ where: { id, hotelId } });
+      if (!fresh || fresh.version !== existing.version) throw Object.assign(new Error('Task changed; refresh first'), { status: 409 });
+      if (!['manager', 'front-office', 'housekeeping'].includes(req.user.role) || (req.user.role === 'housekeeping' && fresh.department !== 'Housekeeping')) throw Object.assign(new Error('Department access required'), { status: 403 });
+      if (status && !['New', 'Assigned', 'In Progress', 'Waiting', 'Escalated', 'Completed'].includes(status)) throw Object.assign(new Error('Invalid status'), { status: 400 });
+      const saved = await tx.task.update({
       where: { id },
       data: {
         version: { increment: 1 },
         status: status || existing.status,
+        ...(status === 'Completed' ? { completedAt: now } : status ? { completedAt: null } : {}),
         assignee: assignee !== undefined ? assignee : existing.assignee,
         trail: {
           create: {
@@ -181,7 +189,10 @@ export const updateTaskStatus = async (req, res, next) => {
         },
       },
       include: { trail: true },
-    });
+      });
+      await guestWorkStatusChanged(tx, 'task', fresh, status || fresh.status, req.user.id);
+      return saved;
+    }, { timeout: 30000 });
 
     // Record activity
     await prisma.activityItem.create({
@@ -195,8 +206,10 @@ export const updateTaskStatus = async (req, res, next) => {
       },
     });
 
+    realtimeService.broadcastToHotel(hotelId, 'handoffs:updated', { refresh: true });
     return successResponse(res, updated, 'Task status updated');
   } catch (error) {
+    if (error.status) return errorResponse(res, error.message, error.status);
     next(error);
   }
 };
