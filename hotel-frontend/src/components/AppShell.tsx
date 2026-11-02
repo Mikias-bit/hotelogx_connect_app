@@ -106,6 +106,17 @@ export function AppShell({
     setMobileNav(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!mobileNav && !drawer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMobileNav(false);
+      setDrawer(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileNav, drawer]);
+
   if (!mounted || !user) {
     return (
       <div className="grain flex min-h-dvh items-center justify-center bg-paper">
@@ -132,6 +143,7 @@ export function AppShell({
           <Link
             key={item.to}
             to={item.to}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "relative flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[13.5px] transition-colors",
               active ? "bg-pine-50 font-medium text-pine-700" : "text-ink-2 hover:bg-paper-2",
@@ -190,7 +202,11 @@ export function AppShell({
         <div className="min-w-0 flex-1">
           <header className="sticky top-0 z-30 border-b border-line bg-paper/85 backdrop-blur-md">
             <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
-              <button onClick={() => setMobileNav(true)} className="text-ink-3 lg:hidden">
+              <button
+                onClick={() => setMobileNav(true)}
+                aria-label="Open menu"
+                className="-ml-2 inline-flex size-9 items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-paper-2 hover:text-ink lg:hidden"
+              >
                 <Menu className="size-5" />
               </button>
               <div className="min-w-0 flex-1">
@@ -209,6 +225,7 @@ export function AppShell({
 
               <button
                 onClick={() => setDrawer("activity")}
+                aria-label={escalations > 0 ? `AI activity, ${escalations} escalations` : "AI activity"}
                 className="relative inline-flex size-9 items-center justify-center rounded-full border border-line bg-surface text-ink-3 transition-colors hover:text-ink"
               >
                 <Bell className="size-4" />
@@ -228,6 +245,7 @@ export function AppShell({
                     navigate({ to: "/login", replace: true });
                   }}
                   title="Sign out"
+                  aria-label="Sign out"
                   className="inline-flex size-7 items-center justify-center rounded-full text-ink-4 transition-colors hover:bg-paper-2 hover:text-ink"
                 >
                   <LogOut className="size-3.5" />
@@ -246,13 +264,22 @@ export function AppShell({
       {mobileNav && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button className="absolute inset-0 bg-ink/25" onClick={() => setMobileNav(false)} aria-label="Close menu" />
-          <div className="slide-in-right absolute inset-y-0 left-0 w-[262px] border-r border-line bg-surface px-5 py-5">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="slide-in-right absolute inset-y-0 left-0 flex w-[262px] flex-col overflow-y-auto border-r border-line bg-surface px-5 py-5"
+          >
             <div className="mb-6 flex items-center justify-between">
               <Link to={nav[0].to} className="flex items-center gap-2.5">
                 <Logo size={28} />
                 <span className="font-display text-[15px] font-semibold text-ink">Hotelogx</span>
               </Link>
-              <button onClick={() => setMobileNav(false)} className="text-ink-4">
+              <button
+                onClick={() => setMobileNav(false)}
+                aria-label="Close menu"
+                className="-mr-2 inline-flex size-9 items-center justify-center rounded-full text-ink-4 transition-colors hover:bg-paper-2 hover:text-ink"
+              >
                 <X className="size-4.5" />
               </button>
             </div>
@@ -275,11 +302,17 @@ export function AppShell({
       {drawer && (
         <div className="fixed inset-0 z-50">
           <button className="absolute inset-0 bg-ink/20" onClick={() => setDrawer(null)} aria-label="Close panel" />
-          <aside className="slide-in-right absolute inset-y-0 right-0 flex w-[min(420px,100vw)] flex-col border-l border-line bg-surface">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label={drawer === "activity" ? "AI activity" : "WhatsApp ops"}
+            className="slide-in-right absolute inset-y-0 right-0 flex w-[min(420px,100vw)] flex-col border-l border-line bg-surface"
+          >
             <div className="flex items-center gap-1 border-b border-line px-4 py-3">
               {(["activity", "whatsapp"] as const).map((tab) => (
                 <button
                   key={tab}
+                  aria-pressed={drawer === tab}
                   onClick={() => setDrawer(tab)}
                   className={cn(
                     "rounded-full px-2.5 py-1 text-[12.5px] font-medium transition-colors",
@@ -289,7 +322,11 @@ export function AppShell({
                   {tab === "activity" ? "AI activity" : "WhatsApp ops"}
                 </button>
               ))}
-              <button onClick={() => setDrawer(null)} className="ml-auto text-ink-4 transition-colors hover:text-ink">
+              <button
+                onClick={() => setDrawer(null)}
+                aria-label="Close panel"
+                className="-mr-1.5 ml-auto inline-flex size-8 items-center justify-center rounded-full text-ink-4 transition-colors hover:bg-paper-2 hover:text-ink"
+              >
                 <X className="size-4" />
               </button>
             </div>

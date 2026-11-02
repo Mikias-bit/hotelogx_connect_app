@@ -7,7 +7,7 @@ import { useOperations } from '@/lib/useOperations';
 import type { Task } from '@/lib/types';
 import { Badge, Button } from './ui';
 
-const field = 'w-full rounded border border-line bg-white px-3 py-2 text-sm';
+const field = 'w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-sm';
 const types: Record<string, string> = { departure_clean_required: 'Departure clean', stayover_clean: 'Stayover clean', linen_change: 'Linen change', towels: 'Towels', late_checkout: 'Late checkout preparation', room_move: 'Room move', urgent_clean: 'Urgent cleaning', delivery: 'Delivery / guest preparation', public_area: 'Public-area cleaning', baby_bed_requested: 'Baby bed', make_sofa_bed: 'Sofa bed', other: 'Other' };
 
 export function HousekeepingPlanEditor({ task, date, timezone, onClose, onSaved }: { task?: Task; date: string; timezone: string; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
@@ -31,7 +31,7 @@ export function HousekeepingPlanEditor({ task, date, timezone, onClose, onSaved 
       <h2 className="font-display text-xl">{task ? 'Change housekeeping instructions' : 'Add housekeeping task'}</h2>
       <p className="text-sm text-ink-3">Work date {date}. All times are in {timezone}. Existing progress and assignment history are retained.</p>
       {task && <label className="block text-sm"><input type="checkbox" checked={cancel} disabled={busy} onChange={e => setCancel(e.target.checked)} /> Cancel this task and retain its history</label>}
-      {task?.sourceReviewRequired && !cancel && <div className="space-y-2 rounded bg-amber-50 p-3 text-sm"><p>The morning plan {task.sourcePresent === false ? 'removed this task' : 'changed'}. Review it before work continues.</p>
+      {task?.sourceReviewRequired && !cancel && <div className="space-y-2 rounded-[9px] bg-attend-bg p-3 text-sm"><p>The morning plan {task.sourcePresent === false ? 'removed this task' : 'changed'}. Review it before work continues.</p>
         {task.pendingSourceData && task.sourcePresent !== false && <p>Latest report: {task.pendingSourceData.room} · {types[task.pendingSourceData.task] || task.pendingSourceData.task} · {task.pendingSourceData.comment || 'No additional instructions'}{task.pendingSourceData.checkoutTime && ` · Checkout ${task.pendingSourceData.checkoutTime}`}</p>}
         <select className={field} aria-label="Review source change" required value={decision} onChange={e => { setDecision(e.target.value); if (e.target.value === 'adopt' && task.pendingSourceData) { const d = task.pendingSourceData; setValues(old => ({ ...old, room: d.room || '', location: '', task: d.task, comment: d.comment || '' })); setPlace('room'); } }}>
           <option value="">Choose how to proceed</option><option value="keep">Keep / edit the operational instructions</option>{task.pendingSourceData && task.sourcePresent !== false && <option value="adopt">Use the latest report instructions</option>}
@@ -46,7 +46,7 @@ export function HousekeepingPlanEditor({ task, date, timezone, onClose, onSaved 
         <label className="block text-sm">Reason for this change<input required maxLength={1000} className={field} value={reason} onChange={e => setReason(e.target.value)} placeholder="Extension, late checkout, waiting arrival, additional request…" /></label>
       </fieldset>
       {task?.assignee && <p className="text-sm">Assigned to {task.assignee}. Saving will request a WhatsApp notification with the updated instructions.</p>}
-      {error && <p role="alert" className="text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-urgent">{error}</p>}
       <div className="flex gap-3"><Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save plan change'}</Button><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button></div>
     </form>
   </div>;
@@ -62,7 +62,7 @@ function PlanList() {
   const [editor, setEditor] = useState<Task | 'new' | null>(null), [notice, setNotice] = useState('');
   return <section className="basis-full space-y-3 rounded-lg border border-line bg-white p-4">
     <div className="flex flex-wrap justify-between gap-3"><p className="font-medium">Today's housekeeping plan</p><Button disabled={!data || loading} onClick={() => setEditor('new')}>Add housekeeping task</Button></div>
-    {error && <p role="alert" className="text-red-700">{error}</p>}{notice && <p role="status">{notice}</p>}
+    {error && <p role="alert" className="text-urgent">{error}</p>}{notice && <p role="status">{notice}</p>}
     <ul className="divide-y">{data?.tasks.filter(t => t.department === 'Housekeeping').map(t => <li key={t.id} className="flex flex-wrap items-start justify-between gap-2 py-3"><div><strong>{t.location || `Room ${t.room}`} · {t.title}</strong><p className="whitespace-pre-wrap text-sm">{t.detail}</p><HousekeepingRepair task={t} reload={load} />{t.status !== "Completed" && <BlockerControls work={{ workKind: "report", workId: t.id, reportContentHash: t.reportContentHash }} blockers={t.blockers} carriedFrom={t.carriedFrom} carryReviewRequired={t.carryReviewRequired} timezone={data.timezone} reload={load} />}<p className="text-sm">{t.assignee || 'Unassigned'} · {t.executionStatus} · {t.priority}</p>{t.sourceReviewRequired && <Badge tone="attend">Plan review needed</Badge>}{t.planNotification && <p className="text-xs">Notification: {t.planNotification.status.replaceAll('_', ' ')} {t.planNotification.error}</p>}<details className="text-xs"><summary>History</summary>{t.trail.map((event, i) => <p className="whitespace-pre-wrap py-1" key={i}>{new Date(event.at).toLocaleString()} · {event.text}</p>)}</details></div><Button variant="outline" size="sm" disabled={t.status === 'Completed' || t.stale} onClick={() => setEditor(t)}>Change instructions</Button></li>)}</ul>
     {data && !data.tasks.some(t => t.department === 'Housekeeping') && <p>No housekeeping tasks yet. You can add a task without waiting for the morning report.</p>}
     {editor && data && <HousekeepingPlanEditor task={editor === 'new' ? undefined : editor} date={data.today} timezone={data.timezone} onClose={() => setEditor(null)} onSaved={async message => { setNotice(message); await load(); window.dispatchEvent(new Event('hotelogx:operations-updated')); }} />}

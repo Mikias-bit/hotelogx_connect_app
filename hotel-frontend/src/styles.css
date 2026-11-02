@@ -14,7 +14,8 @@
   --color-ink: #191d1a;
   --color-ink-2: #414944;
   --color-ink-3: #6c7570;
-  --color-ink-4: #99a09a;
+  /* ink-4 darkened slightly so hints and timestamps stay legible on paper */
+  --color-ink-4: #7f8781;
 
   /* pine — the single accent */
   --color-pine-50: #eef4f1;
@@ -56,6 +57,33 @@
   }
   ::selection {
     background: var(--color-pine-100);
+  }
+  /* bare `border` utilities fall back to the design line colour, not currentColor */
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: var(--color-line);
+  }
+  /* visible keyboard focus for every interactive element */
+  :focus-visible {
+    outline: 2px solid var(--color-pine-500);
+    outline-offset: 2px;
+  }
+  /* text fields keep their border cue and gain a soft pine halo */
+  :where(input:not([type="checkbox"], [type="radio"], [type="range"]), textarea, select):focus {
+    border-color: var(--color-pine-400);
+    box-shadow: 0 0 0 3px var(--color-pine-100);
+  }
+  :where(input[type="checkbox"], input[type="radio"]) {
+    accent-color: var(--color-pine-600);
+  }
+  :where(button:not(:disabled), [role="button"], summary, select) {
+    cursor: pointer;
+  }
+  :where(th) {
+    font-weight: 600;
+    color: var(--color-ink-3);
   }
   * {
     scrollbar-width: thin;

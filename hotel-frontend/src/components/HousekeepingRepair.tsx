@@ -11,6 +11,6 @@ export function HousekeepingRepair({ task, reload }: { task: Task; reload: () =>
       e.preventDefault(); setBusy(true); setError('');
       try { const result = await api.reportHousekeepingRepair(task.id, { note, reportContentHash: task.reportContentHash }); if (!result) throw new Error('Report could not be confirmed. Refresh before retrying.'); setNote(''); await reload(); window.dispatchEvent(new Event('hotelogx:maintenance-updated')); window.dispatchEvent(new Event('hotelogx:operations-updated')); }
       catch (err) { setError(err instanceof Error ? err.message : 'Report failed'); } finally { setBusy(false); }
-    }}><textarea aria-label="Maintenance fault description" className="w-full rounded border p-2" required maxLength={2000} value={note} disabled={busy} onChange={e => setNote(e.target.value)} placeholder="Describe the fault and its exact location" /><Button size="sm" type="submit" disabled={busy}>Create / link repair ticket</Button>{error && <p role="alert" className="text-red-700">{error}</p>}</form></details>}
+    }}><textarea aria-label="Maintenance fault description" className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" required maxLength={2000} value={note} disabled={busy} onChange={e => setNote(e.target.value)} placeholder="Describe the fault and its exact location" /><Button size="sm" type="submit" disabled={busy}>Create / link repair ticket</Button>{error && <p role="alert" className="text-urgent">{error}</p>}</form></details>}
   </div>;
 }

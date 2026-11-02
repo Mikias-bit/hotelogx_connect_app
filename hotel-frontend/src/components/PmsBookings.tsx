@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
 const input = 'w-full rounded border border-line bg-surface px-3 py-2 text-sm';
-const button = 'rounded bg-ink px-3 py-2 text-sm text-white disabled:opacity-40';
+const button = 'rounded-[9px] bg-pine-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-pine-700 disabled:cursor-not-allowed disabled:opacity-45';
 export function BookingSettings() {
   const [config, setConfig] = useState<any>({ enabled: false, autoBook: false, serviceId: '', categoryIds: [], rateTerms: {}, arrivalTime: '15:00', departureTime: '11:00', paymentInstructions: '' });
   const [services, setServices] = useState<{ id: string; name: string }[]>([]), [catalog, setCatalog] = useState<any>(null);

@@ -302,6 +302,7 @@ function Login() {
                       tabIndex={-1}
                       className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-ink-4 transition-colors hover:text-ink"
                       title={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>

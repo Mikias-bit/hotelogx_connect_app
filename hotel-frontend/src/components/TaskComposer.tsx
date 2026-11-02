@@ -54,7 +54,7 @@ export function TaskComposer({
             <Eyebrow>New task</Eyebrow>
             <p className="mt-1 font-display text-[19px] font-medium text-ink">Send work to a department</p>
           </div>
-          <button onClick={onClose} className="text-ink-4 transition-colors hover:text-ink">
+          <button onClick={onClose} aria-label="Close" className="-m-1.5 inline-flex size-8 items-center justify-center rounded-full text-ink-4 transition-colors hover:bg-paper-2 hover:text-ink">
             <X className="size-4" />
           </button>
         </div>
@@ -147,7 +147,7 @@ export function TaskComposer({
           >
             Create task
           </Button>
-          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+          {error && <p role="alert" className="text-sm text-urgent">{error}</p>}
         </div>
       </div>
     </div>
