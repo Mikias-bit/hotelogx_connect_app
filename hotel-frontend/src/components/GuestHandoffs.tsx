@@ -22,15 +22,15 @@ export function GuestHandoffCard({ row }: { row: GuestHandoff }) {
     <p>Guest contact: {row.contactStatus.replaceAll('_', ' ')} {when(row.contactedAt)} {row.contactChannel?.replace('_', ' ')}</p>
     {row.contactNote && <p>{row.contactNote}</p>}{row.resolutionNote && <p>Resolution: {row.resolutionNote}</p>}
     {canManage && <div className="flex flex-wrap gap-2">{available.map(key => <Button key={key} size="sm" variant="outline" disabled={busy || !!loadError} onClick={() => { setAction(key); setNote(''); setError(''); }}>{actions[key]}</Button>)}</div>}
-    {action && <form className="space-y-2 rounded border border-line bg-white p-3" onSubmit={async e => {
+    {action && <form className="space-y-2 rounded-[9px] border border-line bg-surface p-3" onSubmit={async e => {
       e.preventDefault(); setBusy(true); setError('');
       try { const result = await api.actGuestHandoff(row.id, { action, note, channel, version: row.version }); if (!result) throw new Error('Update could not be confirmed'); await reload(); window.dispatchEvent(new Event('hotelogx:handoffs-updated')); setAction(''); }
       catch (err) { setError(err instanceof Error ? err.message : 'Update failed'); } finally { setBusy(false); }
     }}><p className="font-medium">{actions[action]}</p>
-      {['contact', 'unreachable'].includes(action) && <><p className="text-xs text-ink-3">Record contact already made. Send messages using the existing conversation composer.</p><select aria-label="Contact channel" className="rounded border p-2" disabled={busy} value={channel} onChange={e => setChannel(e.target.value)}>{['phone', 'in_person', 'whatsapp', 'email'].map(v => <option value={v} key={v}>{v.replace('_', ' ')}</option>)}</select></>}
+      {['contact', 'unreachable'].includes(action) && <><p className="text-xs text-ink-3">Record contact already made. Send messages using the existing conversation composer.</p><select aria-label="Contact channel" className="rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" disabled={busy} value={channel} onChange={e => setChannel(e.target.value)}>{['phone', 'in_person', 'whatsapp', 'email'].map(v => <option value={v} key={v}>{v.replace('_', ' ')}</option>)}</select></>}
       {action === 'reopen' && <p className="text-xs">The original work returns to its department for reassignment. Previous completion and contact history remain available.</p>}
-      <textarea required maxLength={2000} aria-label="Follow-up outcome and next action" className="w-full rounded border p-2" disabled={busy} value={note} onChange={e => setNote(e.target.value)} placeholder={action === 'not_required' ? 'Why is guest contact not appropriate?' : action === 'resolve' ? 'What confirms the issue is resolved?' : 'What happened and what should happen next?'} />
-      {error && <p role="alert" className="text-red-700">{error}</p>}<Button size="sm" type="submit" disabled={busy}>Save</Button> <Button size="sm" variant="quiet" disabled={busy} onClick={() => setAction('')}>Cancel</Button>
+      <textarea required maxLength={2000} aria-label="Follow-up outcome and next action" className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" disabled={busy} value={note} onChange={e => setNote(e.target.value)} placeholder={action === 'not_required' ? 'Why is guest contact not appropriate?' : action === 'resolve' ? 'What confirms the issue is resolved?' : 'What happened and what should happen next?'} />
+      {error && <p role="alert" className="text-urgent">{error}</p>}<Button size="sm" type="submit" disabled={busy}>Save</Button> <Button size="sm" variant="quiet" disabled={busy} onClick={() => setAction('')}>Cancel</Button>
     </form>}
     <details><summary className="cursor-pointer text-xs">Handoff history</summary>{row.history.map(e => <p className="mt-1 text-xs" key={e.id}>{when(e.at)} - {e.action} ({e.actor}, cycle {e.cycle + 1}): {e.note}</p>)}</details>
   </div>;
@@ -51,7 +51,7 @@ export function GuestHandoffList({ conversationId, unlinkedOnly = false }: { con
   const open = scoped.filter(r => r.state !== 'resolved');
   if (unlinkedOnly && !scoped.length && !error) return null;
   return <details className="rounded-lg border border-line p-3" open={!!conversationId || undefined}><summary className="cursor-pointer text-sm font-medium">Guest follow-ups ({loading ? '...' : open.length} open)</summary>
-    <div className="mt-3 space-y-3">{error && <p role="alert" className="text-red-700">{error}</p>}<label className="text-xs"><input type="checkbox" checked={showResolved} onChange={e => setShowResolved(e.target.checked)} /> Include resolved issues</label>
+    <div className="mt-3 space-y-3">{error && <p role="alert" className="text-urgent">{error}</p>}<label className="text-xs"><input type="checkbox" checked={showResolved} onChange={e => setShowResolved(e.target.checked)} /> Include resolved issues</label>
       {(showResolved ? scoped : open).map(r => <GuestHandoffCard key={r.id} row={r} />)}{!loading && !error && !scoped.length && <p className="text-sm">No guest follow-ups recorded.</p>}
     </div></details>;
 }

@@ -92,7 +92,7 @@ export function Badge({
 
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-4", className)}>{children}</p>
+    <p className={cn("text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-4", className)}>{children}</p>
   );
 }
 
@@ -184,11 +184,23 @@ export function StatCard({
   return (
     <div
       onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       style={{ animationDelay: `${delay}ms` }}
       className={cn(
         "rise rounded-card border bg-surface p-4",
         emphasis ? "border-urgent/25 bg-urgent-bg/40" : "border-line",
-        onClick && "cursor-pointer transition-colors hover:border-ink-4",
+        onClick && "cursor-pointer transition-[border-color,box-shadow] hover:border-ink-4 hover:shadow-[0_4px_14px_-10px_rgba(25,29,26,0.35)]",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -198,7 +210,7 @@ export function StatCard({
       <p className={cn("tnum mt-2 font-display text-[30px] leading-none font-medium", emphasis ? "text-urgent" : "text-ink")}>
         {value}
       </p>
-      {hint && <p className="mt-1.5 text-[11.5px] text-ink-4">{hint}</p>}
+      {hint && <p className="mt-1.5 text-[11.5px] leading-snug text-ink-4">{hint}</p>}
     </div>
   );
 }
@@ -320,7 +332,7 @@ export function Toaster() {
   const toasts = useApp((s) => s.toasts);
   if (!toasts.length) return null;
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-60 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2">
+    <div role="status" aria-live="polite" className="pointer-events-none fixed right-4 bottom-4 z-60 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -333,7 +345,11 @@ export function Toaster() {
             <p className="text-[13px] font-medium text-ink">{t.text}</p>
             {t.detail && <p className="mt-0.5 text-[12px] leading-snug text-ink-3">{t.detail}</p>}
           </div>
-          <button onClick={() => dismissToast(t.id)} className="text-ink-4 transition-colors hover:text-ink">
+          <button
+            onClick={() => dismissToast(t.id)}
+            aria-label="Dismiss notification"
+            className="-m-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full text-ink-4 transition-colors hover:bg-paper-2 hover:text-ink"
+          >
             <X className="size-3.5" />
           </button>
         </div>

@@ -37,7 +37,7 @@ export function OnboardingWhatsAppStep({ connectionType }: { connectionType: WaC
   });
   return <Card>
     <SectionTitle title={connectionType === 'guest' ? 'Guest WhatsApp' : 'Internal WhatsApp'} hint="Connect your business number through Meta" />
-    {error && <p role="alert" className="my-3 text-sm text-red-700">{error}</p>}
+    {error && <p role="alert" className="my-3 text-sm text-urgent">{error}</p>}
     {status?.connected ? <div className="space-y-3">
       <p>Verified connection: {status.number}</p>
       <p>{status.onboardingMode === 'coexistence' ? 'WhatsApp Business app + Hotelogx (Coexistence)' : 'Cloud API connection'}</p>
@@ -45,8 +45,8 @@ export function OnboardingWhatsAppStep({ connectionType }: { connectionType: WaC
       <p className="text-sm">Last inbound: {status.lastInboundAt ? new Date(status.lastInboundAt).toLocaleString() : 'Awaiting first message'}</p>
       <p className="text-sm">Last outbound status: {status.lastDeliveryStatus || 'No delivery receipt yet'}</p>
       <p className="text-sm">First send a WhatsApp message from your test phone to this business number. Then enter that test phone below to test a reply.</p>
-      <input aria-label="Test recipient" placeholder="Test recipient, including country code" value={recipient} onChange={e => setRecipient(e.target.value)} className="w-full rounded border p-2" />
-      <input aria-label="Test message" value={message} onChange={e => setMessage(e.target.value)} className="w-full rounded border p-2" />
+      <input aria-label="Test recipient" placeholder="Test recipient, including country code" value={recipient} onChange={e => setRecipient(e.target.value)} className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" />
+      <input aria-label="Test message" value={message} onChange={e => setMessage(e.target.value)} className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" />
       <Button disabled={busy || !recipient.trim() || !message.trim()} onClick={() => void run(async () => {
         const result = await api.sendWhatsAppTestMessage(recipient, message, connectionType);
         toast('Meta accepted the test message', 'good', result?.messageId || 'Check the recipient and refresh delivery status.'); await refresh();
@@ -57,20 +57,20 @@ export function OnboardingWhatsAppStep({ connectionType }: { connectionType: WaC
       {status?.lastError && <p className="text-sm">{status.lastError}</p>}
       <label className="block text-sm"><input type="checkbox" checked={both} onChange={e => setBoth(e.target.checked)} /> Use one number for guests and internal messages</label>
       {!manual && <label className="block text-sm">How do you use this number?
-        <select aria-label="WhatsApp connection method" value={mode} onChange={e => setMode(e.target.value as 'standard' | 'coexistence')} className="block w-full rounded border p-2">
+        <select aria-label="WhatsApp connection method" value={mode} onChange={e => setMode(e.target.value as 'standard' | 'coexistence')} className="block w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink">
           <option value="standard">New or existing Cloud API number</option>
           <option value="coexistence">Keep my WhatsApp Business app (Coexistence)</option>
         </select>
       </label>}
       {!manual && mode === 'coexistence' && <p className="text-sm">Use a number already active in the WhatsApp Business mobile app. Meta checks eligibility. Keep the app open and approve the connection and history sharing when prompted. Phone replies pause AI for that conversation; a reply already sent cannot be recalled.</p>}
       {(manual || mode === 'standard') && <label className="block text-sm">Six-digit registration PIN (needed only for an unregistered Cloud API number)
-        <input type="password" autoComplete="off" maxLength={6} value={pin} onChange={e => setPin(e.target.value)} className="block w-full rounded border p-2" />
+        <input type="password" autoComplete="off" maxLength={6} value={pin} onChange={e => setPin(e.target.value)} className="block w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" />
       </label>}
       <label className="block text-sm"><input type="checkbox" checked={manual} onChange={e => setManual(e.target.checked)} /> Use existing Meta API credentials</label>
       {manual && <>
-        <input aria-label="WABA ID" placeholder="WhatsApp Business Account ID" value={wabaId} onChange={e => setWabaId(e.target.value)} className="w-full rounded border p-2" />
-        <input aria-label="Phone Number ID" placeholder="Phone Number ID" value={phoneNumberId} onChange={e => setPhoneId(e.target.value)} className="w-full rounded border p-2" />
-        <input aria-label="Access token" autoComplete="off" type="password" placeholder="Meta access token" value={accessToken} onChange={e => setToken(e.target.value)} className="w-full rounded border p-2" />
+        <input aria-label="WABA ID" placeholder="WhatsApp Business Account ID" value={wabaId} onChange={e => setWabaId(e.target.value)} className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" />
+        <input aria-label="Phone Number ID" placeholder="Phone Number ID" value={phoneNumberId} onChange={e => setPhoneId(e.target.value)} className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" />
+        <input aria-label="Access token" autoComplete="off" type="password" placeholder="Meta access token" value={accessToken} onChange={e => setToken(e.target.value)} className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink" />
       </>}
       <Button disabled={busy} onClick={() => void connect()}>{busy ? 'Verifying with Meta…' : manual ? 'Verify and connect' : 'Continue with Facebook'}</Button>
     </div>}

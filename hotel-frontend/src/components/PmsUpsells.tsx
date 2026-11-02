@@ -36,11 +36,11 @@ export function PmsUpsells({ conversationId }: { conversationId?: string }) {
     if (!conversationId) api.getConversations().then(rows => setConversations(rows || [])).catch(() => setNotice('Unable to load conversations.'));
     if (!conversationId && user?.role === 'manager') api.getKnowledgeDocs().then(rows => setDocs(rows || [])).catch(() => setNotice('Unable to load knowledge documents.'));
   }, [conversationId]);
-  const input = `rounded border border-slate-300 bg-white px-3 py-2 text-sm${conversationId ? ' w-full min-w-0' : ''}`;
-  const button = 'rounded bg-slate-800 px-3 py-2 text-sm text-white disabled:opacity-40';
-  return <section className={conversationId ? 'min-w-0 space-y-3' : 'space-y-4 rounded-xl border border-slate-200 bg-white p-5'}>
+  const input = `rounded-[9px] border border-line bg-surface px-3 py-2 text-sm${conversationId ? ' w-full min-w-0' : ''}`;
+  const button = 'rounded-[9px] bg-pine-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-pine-700 disabled:cursor-not-allowed disabled:opacity-45';
+  return <section className={conversationId ? 'min-w-0 space-y-3' : 'space-y-4 rounded-card border border-line bg-surface p-5'}>
     {!conversationId && <h2 className="text-lg font-semibold">Reservation extras and folio approvals</h2>}
-    <p className="text-sm text-slate-600">Prices come from Mews or a manager-approved knowledge document. The guest must accept an exact offer before posting. No payment is collected.</p>
+    <p className="text-sm text-ink-3">Prices come from Mews or a manager-approved knowledge document. The guest must accept an exact offer before posting. No payment is collected.</p>
     {notice && <p role="status" className="text-sm">{notice}</p>}
     <details><summary className="cursor-pointer font-medium">Verify a conversation’s reservation</summary>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -60,18 +60,18 @@ export function PmsUpsells({ conversationId }: { conversationId?: string }) {
           {source === 'knowledge' && <><input className={input} aria-label="Approved unit price" type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder={`Unit price (${product.currency})`} /><select className={input} aria-label="Knowledge document" value={doc} onChange={e => setDoc(e.target.value)}><option value="">Source document</option>{docs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></>}
           <label className="text-sm"><input type="checkbox" checked={autoPost} onChange={e => setAutoPost(e.target.checked)} /> Allow automatic posting after guest acceptance, subject to hotel policy</label>
           <button className={button} disabled={busy || (source === 'knowledge' && (!amount || !doc))} onClick={() => act(() => api.savePmsProduct(product.product_id, { serviceId: product.service_id, label: product.name, category, priceSource: source, unitAmount: amount, currency: product.currency, knowledgeDocId: doc, autoPost }))}>Approve product configuration</button>
-          <p className="text-xs text-slate-600">Early check-in and late checkout always require staff approval.</p>
+          <p className="text-xs text-ink-3">Early check-in and late checkout always require staff approval.</p>
         </div>}
       </div>
     </details>}
     <button className={button} disabled={busy} onClick={() => act(refresh)}>Refresh offers</button>
     <input className={`${input} ml-2`} aria-label="Approval note" value={note} onChange={e => setNote(e.target.value)} placeholder="Approval reason / availability checked" />
-    <div className="space-y-2">{data?.offers?.length === 0 && <p className="text-sm">No PMS offers yet.</p>}{data?.offers?.map((offer: any) => <article key={offer.id} className="rounded border p-3 text-sm">
+    <div className="space-y-2">{data?.offers?.length === 0 && <p className="text-sm">No PMS offers yet.</p>}{data?.offers?.map((offer: any) => <article key={offer.id} className="rounded-[9px] border border-line bg-surface p-3 text-sm">
       <p className="font-medium">{offer.name} · {offer.quantity} unit(s) · {offer.totalAmount} {offer.currency}</p>
       <p>Offer {offer.id.toUpperCase()} · {offer.status} · {offer.priceSource} price</p>
-      <p className="break-all text-xs text-slate-600">Reservation {offer.reservationId} · Consumption {new Date(offer.consumptionUtc).toLocaleString()}</p>
+      <p className="break-all text-xs text-ink-3">Reservation {offer.reservationId} · Consumption {new Date(offer.consumptionUtc).toLocaleString()}</p>
       {['offered', 'pending_approval'].includes(offer.status) && <div className="mt-2 flex gap-2"><button className={button} disabled={busy || note.trim().length < 5} onClick={() => act(() => api.approvePmsOffer(offer.id, note))}>Approve and post accepted offer</button><button className={button} disabled={busy} onClick={() => act(() => api.rejectPmsOffer(offer.id))}>Reject</button></div>}
-      {['posting', 'uncertain'].includes(offer.status) && <p className="text-amber-800">Check the Mews folio manually before taking further action. Do not create a replacement charge.</p>}
+      {['posting', 'uncertain'].includes(offer.status) && <p className="text-attend">Check the Mews folio manually before taking further action. Do not create a replacement charge.</p>}
     </article>)}</div>
   </section>;
 }
