@@ -64,7 +64,7 @@ export function createHousekeepingOperations({ db, send, broadcast = () => {}, e
     if (!claimed.count) return db.housekeepingAssignment.findUnique({ where: { id: assignment.id } });
     try {
       const payload = openWindow ? await packet(worker) : { template: { name: config.templateName, language: { code: config.templateLanguage }, components: [{ type: 'body', parameters: [{ type: 'text', text: worker.name }, { type: 'text', text: String(assignment.taskIds.length) }] }] } };
-      const response = await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, ...payload });
+      const response = await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, assignmentDepartment: 'housekeeping', ...payload });
       await db.housekeepingAssignment.updateMany({ where: { id: assignment.id, deliveryStatus: 'sending' }, data: { deliveryStatus: response.success ? (openWindow ? 'submitted' : 'template_submitted') : response.uncertain ? 'uncertain' : 'failed', messageId: response.messageId || null, lastError: response.success ? null : 'WhatsApp delivery not confirmed. Check the connection and provider before retrying.' } });
       return db.housekeepingAssignment.findUnique({ where: { id: assignment.id } });
     } catch {

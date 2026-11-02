@@ -1,4 +1,5 @@
 import { createPmsMcpClient } from './pmsMcpClient.js';
+import { runBookingAi } from './pmsBookingAi.js';
 
 const schemas = {
   search_upsell_products: { query: 'string' },
@@ -24,6 +25,10 @@ function validate(name, args) {
 export async function runPmsAiTools({ hotelId, conversationId, messageText, history = [], knowledge = '',
   client = createPmsMcpClient(), request = fetch, env = process.env, verification }) {
   const context = { hotelId, conversationId };
+  if (/^BOOK [A-F0-9]{12}$/i.test(messageText.trim()) || !verification?.shouldVerify(messageText)) {
+    const booking = await runBookingAi({ hotelId, conversationId, messageText, history, client, request, env });
+    if (booking) return booking;
+  }
   if (verification?.shouldVerify(messageText)) {
     const pending = await verification.ensure(context, messageText);
     if (pending) return pending;

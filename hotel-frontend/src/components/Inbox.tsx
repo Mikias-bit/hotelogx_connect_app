@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { Badge, Button, ChannelMark, Empty, Eyebrow, KeyValue, statusTone } from "./ui";
 import type { Tone } from "./ui";
 import { PmsUpsells } from "./PmsUpsells";
+import { BookingRequests } from './PmsBookings';
 import { TaskComposer } from "./TaskComposer";
 
 const filters = [
@@ -254,6 +255,7 @@ function GuestContext({
       {(conversation.aiStatus === 'escalated' || conversation.aiStatus === 'human-takeover') && (
         <details className="rounded-[10px] border border-line bg-paper/70 p-3" open={conversation.escalation?.kind === 'reservation_verification' || conversation.escalation?.kind === 'pms_approval' || conversation.escalation?.kind === 'pms_review'}>
           <summary className="cursor-pointer text-[13px] font-medium">Reservation check &amp; approvals</summary>
+          <div className="my-3"><BookingRequests key={`booking-${conversation.id}`} conversationId={conversation.id} /></div>
           <div className="mt-3"><PmsUpsells key={conversation.id} conversationId={conversation.id} /></div>
         </details>
       )}

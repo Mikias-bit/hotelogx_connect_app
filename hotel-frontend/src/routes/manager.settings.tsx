@@ -3,6 +3,7 @@ import { OnboardingWhatsAppStep } from '@/components/OnboardingWhatsAppStep';
 import { ManualMailboxForm } from '@/components/ManualMailboxForm';
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { BookingSettings } from '@/components/PmsBookings';
 import {
   ArrowUpRight,
   BookOpen,
@@ -285,7 +286,7 @@ function HotelProfilePanel() {
           <div className="mt-3 flex items-start gap-1.5 border-t border-line-soft pt-3 text-[11.5px] leading-snug text-ink-4">
             <Shield className="mt-px size-3.5 shrink-0 text-pine-600" />
             <span>
-              Availability questions always end at your booking engine. The WhatsApp number is set in Connections, not here —
+              Your booking engine remains available alongside chat reservations enabled in PMS settings. The WhatsApp number is set in Connections, not here —
               it belongs to your WhatsApp Business account.
             </span>
           </div>
@@ -890,7 +891,7 @@ function IntegrationsPanel() {
                   <KeyValue label="Property" value={profile.name} />
                   <KeyValue label="Last sync" value={integrations.pms.lastSync} />
                   <KeyValue label="Reads" value="Availability, rates, reservations, folios" />
-                  <KeyValue label="Writes" value="Nothing — read only" />
+                  <KeyValue label="Writes" value="Approved extras and enabled chat reservations" />
                 </div>
                 <Button size="sm" variant="outline" className="mt-3 w-full" icon={RefreshCw} onClick={() => syncPmsWithBackend()}>
                   Sync now
@@ -910,9 +911,9 @@ function IntegrationsPanel() {
             </div>
             <p className="mt-3 flex items-start gap-1.5 border-t border-line-soft pt-3 text-[11.5px] leading-snug text-ink-4">
               <Shield className="mt-px size-3.5 shrink-0 text-pine-600" />
-              Hotelogx Connect never creates, modifies or cancels a reservation, and never takes payment. It reads availability
-              and pricing, then sends the guest to {profile.bookingEngine}.
+              Hotelogx Connect reads live availability and prices. When enabled below, it can create an accepted reservation according to your approval rules. Staff arrange payment; Hotelogx does not charge cards.
             </p>
+            <BookingSettings />
           </Card>
         )}
 

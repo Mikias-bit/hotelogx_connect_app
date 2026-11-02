@@ -24,6 +24,8 @@
     "test:imap:database": "node scripts/test-imap-database.mjs .env",
     "test:reports": "node --test src/tests/dailyReports.test.js",
     "test:operations": "node --test src/tests/reportOperations.test.js",
+    "test:bookings": "node --test src/tests/pmsBookings.test.js src/tests/pmsAiTools.test.js src/tests/pmsMcp.test.js src/tests/pmsHandoff.test.js",
+    "test:bookings:database": "node scripts/test-bookings-database.mjs .env",
     "test:operations:database": "node scripts/test-operations-database.mjs .env",
     "test:blockers": "node --test src/tests/operationalBlockers.test.js",
     "test:blockers:database": "node scripts/test-blockers-database.mjs .env",
@@ -31,7 +33,7 @@
     "test:handoffs:database": "node scripts/test-handoffs-database.mjs .env",
     "test:verification": "node --test src/tests/guestVerification.test.js",
     "test:verification:database": "node scripts/test-verification-database.mjs .env",
-    "test:whatsapp": "node --test src/tests/whatsappReal.test.js src/tests/whatsappCoexistence.test.js src/tests/whatsappWebhookHttp.test.js"
+    "test:whatsapp": "node --test src/tests/whatsappReal.test.js src/tests/whatsappCoexistence.test.js src/tests/whatsappWebhookHttp.test.js src/tests/workerNavigation.test.js"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

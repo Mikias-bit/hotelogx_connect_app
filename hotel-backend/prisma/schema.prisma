@@ -2,6 +2,48 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model PmsBookingConfig {
+  hotelId String @id
+  enabled Boolean @default(false)
+  autoBook Boolean @default(false)
+  serviceId String
+  categoryIds Json
+  rateTerms Json
+  arrivalTime String @default("15:00")
+  departureTime String @default("11:00")
+  paymentInstructions String
+  updatedBy String
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model PmsBookingOffer {
+  id String @id
+  hotelId String
+  conversationId String
+  requestKey String @unique
+  request Json
+  guestDetails Json
+  snapshot Json
+  configVersion String
+  replyText String
+  status String @default("offered")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  expiresAt DateTime
+  acceptedMessageId String?
+  approvedBy String?
+  approvedAt DateTime?
+  approvalNote String?
+  customerId String?
+  result Json?
+  lastError String?
+  paymentStatus String @default("staff_follow_up")
+  paymentFollowUpBy String?
+  paymentFollowUpAt DateTime?
+  paymentFollowUpNote String?
+  @@index([hotelId, conversationId, createdAt])
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

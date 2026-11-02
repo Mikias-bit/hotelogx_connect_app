@@ -1,8 +1,9 @@
 import { decryptToken } from '../../utils/tokenCrypto.js';
 import { verifiedConnection } from './MetaClient.js';
+import { assignmentTemplate } from './workerNavigation.js';
 export class WhatsAppMessagingService {
   constructor({ db, request }) { Object.assign(this, { db, request }); }
-  async send({ hotelId, targetType = 'guest', to, text, buttons = [], template }) {
+  async send({ hotelId, targetType = 'guest', to, text, buttons = [], template, assignmentDepartment }) {
     const recipient = String(to || '').replace(/[+\s()-]/g, '');
     if (!hotelId || !/^\d{8,15}$/.test(recipient) || (!template && !text?.trim())) return { success: false, error: 'Hotel, valid international recipient, and message are required' };
     const integration = await this.db.whatsAppIntegration.findFirst({ where: { hotelId, targetType: { in: [targetType, 'both'] }, status: 'connected' } });
@@ -11,6 +12,10 @@ export class WhatsAppMessagingService {
     if (!token) return { success: false, error: 'Cannot decrypt WhatsApp credentials' };
     const replies = buttons.map((button, i) => typeof button === 'string' ? { id: `action_${i}`, title: button.slice(0, 20) } : button);
     if (replies.length > 3 || replies.some(b => !b || typeof b.id !== 'string' || !b.id || b.id.length > 256 || typeof b.title !== 'string' || !b.title || b.title.length > 20) || new Set(replies.map(b => b.id)).size !== replies.length) return { success: false, error: 'Invalid WhatsApp reply buttons' };
+    if (template && assignmentDepartment) {
+      try { template = await assignmentTemplate({ request: this.request, integration, token, template, department: assignmentDepartment }); }
+      catch (error) { return { success: false, uncertain: false, error: error.message }; }
+    }
     const payload = { messaging_product: 'whatsapp', to: recipient, type: template ? 'template' : buttons.length ? 'interactive' : 'text',
       ...(template ? { template } : replies.length ? { interactive: { type: 'button', body: { text }, action: { buttons: replies.map(reply => ({ type: 'reply', reply })) } } } : { text: { body: text, preview_url: false } }) };
     try {

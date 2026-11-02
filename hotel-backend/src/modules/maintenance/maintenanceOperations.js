@@ -2,6 +2,7 @@ import { assertUnblocked, draftBlocker, addBlockerNote, workBlockers, hotelDay }
 import { guestWorkStatusChanged } from '../operations/guestHandoffs.js';
 import { repairStatusChanged } from '../reports/housekeepingRepairs.js';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
+import { workerNavigationIds } from '../whatsapp/workerNavigation.js';
 
 export function fail(message, status = 400) { throw Object.assign(new Error(message), { status }); }
 const kinds = ['issue', 'task'];
@@ -107,7 +108,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
     if (!claimed.count) return db.maintenanceAssignment.findUnique({ where: { id: assignment.id } });
     try {
       const payload = openWindow ? await packet(worker) : { template: { name: config.templateName, language: { code: config.templateLanguage }, components: [{ type: 'body', parameters: [{ type: 'text', text: worker.name }, { type: 'text', text: String(assignment.work.length) }] }] } };
-      const response = await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, ...payload });
+      const response = await send({ hotelId: worker.hotelId, targetType: 'internal', to: worker.phone, assignmentDepartment: 'maintenance', ...payload });
       await db.maintenanceAssignment.updateMany({ where: { id: assignment.id, hotelId: worker.hotelId, deliveryStatus: 'sending' }, data: { deliveryStatus: response.success ? (openWindow ? 'submitted' : 'template_submitted') : response.uncertain ? 'uncertain' : 'failed', messageId: response.messageId || null, lastError: response.success ? null : 'Delivery not confirmed. Check WhatsApp before retrying.' } });
     } catch {
       await db.maintenanceAssignment.updateMany({ where: { id: assignment.id, hotelId: worker.hotelId, deliveryStatus: 'sending' }, data: { deliveryStatus: 'uncertain', lastError: 'Delivery outcome unknown. No automatic resend.' } });
@@ -180,8 +181,8 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
     const worker = await db.maintenanceWorker.findFirst({ where: { hotelId: integration.hotelId, phone: `+${message.from}`, active: true, whatsappEnabled: true } });
     if (!worker) return false;
     const hkWorker = await db.housekeepingWorker.findFirst({ where: { hotelId: integration.hotelId, phone: worker.phone, active: true, whatsappEnabled: true } });
-    if (hkWorker?.pendingProblemTaskId && !actionId?.startsWith('mt.') && !/^maintenance$/i.test(text)) return false;
-    const chooseDepartment = hkWorker && !actionId?.startsWith('mt.') && !/^maintenance$/i.test(text) && !worker.pendingProblemRef;
+    if (hkWorker?.pendingProblemTaskId && !message.workerNavigation && !actionId?.startsWith('mt.') && !/^maintenance$/i.test(text)) return false;
+    const chooseDepartment = hkWorker && !actionId?.startsWith('mt.') && !/^maintenance$/i.test(text) && (!worker.pendingProblemRef || message.workerNavigation);
     const inbound = new Date(Number(message.timestamp) * 1000);
     if (!Number.isFinite(+inbound) || +inbound > +now() + 300000 || +inbound < +now() - 86400000) return true;
     const receiptId = `mt:${integration.phoneNumberId}:${message.id}`;
@@ -191,7 +192,10 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
     try {
       await db.maintenanceWorker.updateMany({ where: { id: worker.id, hotelId: worker.hotelId, phone: worker.phone }, data: { lastInboundAt: inbound } });
       const action = parse(worker, actionId);
-      if (chooseDepartment) response = { text: 'Reply MAINTENANCE for repair assignments or HOUSEKEEPING for cleaning assignments.' };
+      if (chooseDepartment) response = { text: 'Choose your assignments:', buttons: [
+        { id: workerNavigationIds.housekeeping, title: 'Housekeeping' },
+        { id: workerNavigationIds.maintenance, title: 'Maintenance' },
+      ] };
       else if (actionId && !action) response = { text: 'This action is invalid or expired. Reply MAINTENANCE for your current assignments.' };
       else if (action) {
         await db.$transaction(async tx => {
@@ -240,7 +244,7 @@ export function createMaintenanceOperations({ db, send, broadcast = () => {}, en
           }
           await tx.maintenanceWorker.updateMany({ where: { id: worker.id, hotelId: worker.hotelId, phone: worker.phone }, data: { pendingProblemRef: null } });
         });
-      } else if (/^(tasks|maintenance)$/i.test(text)) {
+      } else if (!message.workerNavigation && /^(tasks|maintenance)$/i.test(text)) {
         await db.maintenanceWorker.updateMany({ where: { id: worker.id, hotelId: worker.hotelId }, data: { pendingProblemRef: null } });
       }
       response ||= await packet(worker);

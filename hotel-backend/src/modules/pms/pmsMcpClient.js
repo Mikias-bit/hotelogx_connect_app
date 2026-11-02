@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 
-const conversationTools = new Set(['search_upsell_products', 'get_my_reservation', 'quote_upsell', 'post_accepted_upsell']);
-const tools = new Set(['check_connection', 'get_reservations', 'get_guest_details', 'get_arrivals', 'get_departures', 'get_rooms', 'get_bills', 'get_payments', 'get_availability', 'get_products', ...conversationTools]);
+const conversationTools = new Set(['search_upsell_products', 'get_my_reservation', 'quote_upsell', 'post_accepted_upsell', 'search_booking_availability', 'quote_booking', 'create_accepted_booking']);
+const tools = new Set(['check_connection', 'get_reservations', 'get_guest_details', 'get_arrivals', 'get_departures', 'get_rooms', 'get_bills', 'get_payments', 'get_availability', 'get_products', 'get_booking_catalog', ...conversationTools]);
 const protocol = '2025-03-26';
 
 export function createPmsMcpClient({ env = process.env, request = fetch, identityToken } = {}) {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createPmsMcpClient } from './pmsMcpClient.js';
 import { createUpsellRouter } from './pmsUpsellRoutes.js';
+import { createBookingRouter } from './pmsBookingRoutes.js';
 import { successResponse, errorResponse } from '../../utils/response.js';
 import {
   connectPmsController,
@@ -18,6 +19,7 @@ import { authenticate } from '../../middlewares/auth.js';
 
 const router = Router();
 router.use('/upsells', createUpsellRouter());
+router.use('/bookings', createBookingRouter());
 
 // Authenticated staff diagnostic. No caller-supplied hotel IDs or tool names.
 router.get('/mcp/status', authenticate, async (req, res) => {

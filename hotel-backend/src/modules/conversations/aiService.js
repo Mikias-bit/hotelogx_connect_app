@@ -554,7 +554,7 @@ export async function processGuestMessageAI({
     catch { verificationResult = { status: 'verification', replyText: verificationHandoffReply, staffReview: true }; }
     const effectiveMessage = verificationResult?.resumeRequest || messageText;
     const since = await guestVerification.historySince(verificationContext);
-    const history = verificationResult?.resumeRequest ? [] : await database.message.findMany({ where: { conversationId, ...(since ? { createdAt: { gt: since } } : {}) }, orderBy: { createdAt: 'desc' }, take: 8 });
+    const history = verificationResult?.resumeRequest ? [] : await database.message.findMany({ where: { conversationId, ...(since ? { createdAt: { gt: since } } : {}) }, orderBy: { createdAt: 'desc' }, take: 16 });
     const knowledge = verificationResult && !verificationResult.resumeRequest ? { contextText: '', docNames: [] } : await retrieveRelevantKnowledge(effectiveHotelId, effectiveMessage);
     const result = verificationResult && !verificationResult.resumeRequest ? verificationResult : await runPmsAiTools({ hotelId: effectiveHotelId, conversationId, messageText: effectiveMessage,
       history: history.reverse(), knowledge: knowledge.contextText || '', verification: guestVerification });
@@ -562,7 +562,7 @@ export async function processGuestMessageAI({
       const handoff = await savePmsHandoff(database, { hotelId: effectiveHotelId, conversationId, raisedAt: timeStr }, result);
       const hotel = await database.hotel.findUnique({ where: { id: effectiveHotelId } });
       const config = await database.aiConfig.findUnique({ where: { hotelId: effectiveHotelId } });
-      const policy = result.status === 'verification' ? { requiresApproval: false } : await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText: effectiveMessage, guest, database, strict: deferEmailDelivery });
+      const policy = result.status === 'verification' ? { requiresApproval: false } : await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText: effectiveMessage, guest, database, strict: deferEmailDelivery, intentType: result.status?.startsWith('booking_') ? 'pms_availability' : undefined });
       const requiresApproval = policy.requiresApproval || hotel?.aiMode !== 'Autonomous' || config?.autoReply === false || conversation.aiStatus !== 'ai-handling';
       const message = requiresApproval ? null : await database.message.create({ data: {
         id: `m-${crypto.randomUUID()}`, conversationId, author: 'ai', channel, body: result.replyText,
@@ -858,22 +858,7 @@ export async function processGuestMessageAI({
       intentType: 'pms_availability',
     });
 
-    const pmsAvail = await pmsService.checkAvailability(effectiveHotelId);
-    const bookingUrl = pmsAvail.bookingEngine || 'https://booking.hotelmercier.be';
-    const categoriesText = (pmsAvail.categories || []).map((c) => `- ${c.name}: ${c.rate}`).join('\n');
-
-    let aiReplyBody = await generateWithGemini({
-      prompt: `A guest asked about room availability and rates: "${messageText}".
-Live Hotel Availability & Rates from PMS:
-${categoriesText}
-Direct Booking Engine Link: ${bookingUrl}
-Write a polite, warm 2-3 sentence response confirming availability, mentioning starting rates, and inviting them to book directly on our website (${bookingUrl}). Never ask for credit card info or confirm reservations directly in chat.`,
-      systemInstruction: `You are the AI Assistant for ${hotelName}. Be warm, welcoming, and concise. Availability and rates are read from PMS. Direct booking ends with a link to the hotel website.`,
-    });
-
-    if (!aiReplyBody) {
-      aiReplyBody = `We have rooms available for your stay! Our Deluxe Courtyard rooms start from €160/night and Superior King from €185/night. You can view full availability and reserve directly on our website here: ${bookingUrl}`;
-    }
+    const aiReplyBody = 'I cannot confirm live room availability or a booking price right now. Please provide your check-in/check-out dates, adult count and children’s ages so Front Office can check. Do not send card details.';
 
     if (policy.requiresApproval) {
       return {
