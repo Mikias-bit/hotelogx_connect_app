@@ -7,7 +7,7 @@ import { useCurrentUser } from "@/lib/session";
 import { useApp } from "@/lib/store";
 import { useOperations } from "@/lib/useOperations";
 import type { Task } from "@/lib/types";
-import { greeting } from "@/lib/utils";
+import { useDashboardGreeting } from '@/lib/useDashboardGreeting';
 
 export const Route = createFileRoute("/housekeeping/")({
   component: HousekeepingDashboard,
@@ -23,6 +23,7 @@ function hotelTime(timezone: string) {
 }
 
 function HousekeepingDashboard() {
+  const dashboardGreeting = useDashboardGreeting();
   const user = useCurrentUser();
   const navigate = useNavigate();
   const pmsRooms = useApp((s) => s.rooms);
@@ -80,7 +81,7 @@ function HousekeepingDashboard() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
+            <Eyebrow>{dashboardGreeting}, {user?.name.split(" ")[0]}</Eyebrow>
             <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[30px]">
               {current ? `${cleaned.length} of ${rooms.length} rooms completed.` : 'Your floor at a glance.'}
             </h1>

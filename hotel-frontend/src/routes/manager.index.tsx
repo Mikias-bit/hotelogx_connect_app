@@ -28,13 +28,15 @@ import { Badge, Button, Card, Empty, Eyebrow, Meter, SectionTitle, Sparkline, St
 import { api } from "@/lib/api";
 import { useCurrentUser } from "@/lib/session";
 import { selectors, useApp } from "@/lib/store";
-import { greeting, money } from "@/lib/utils";
+import { money } from "@/lib/utils";
+import { useDashboardGreeting } from '@/lib/useDashboardGreeting';
 
 export const Route = createFileRoute("/manager/")({
   component: ManagerDashboard,
 });
 
 function ManagerDashboard() {
+  const dashboardGreeting = useDashboardGreeting();
   const user = useCurrentUser();
   const operations = useOperations();
   const readiness = useReadiness();
@@ -176,7 +178,7 @@ function ManagerDashboard() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
+            <Eyebrow>{dashboardGreeting}, {user?.name.split(" ")[0]}</Eyebrow>
             <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[31px]">
               Here is your hotel this morning.
             </h1>

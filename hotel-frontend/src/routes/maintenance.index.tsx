@@ -7,10 +7,11 @@ import { MaintenanceWorkCard } from '@/components/MaintenanceWorkCard';
 import { Badge, Button, Card, Empty, Eyebrow, SectionTitle, StatCard } from '@/components/ui';
 import { useMaintenance } from '@/lib/useMaintenance';
 import { useCurrentUser } from '@/lib/session';
-import { greeting } from '@/lib/utils';
+import { useDashboardGreeting } from '@/lib/useDashboardGreeting';
 
 export const Route = createFileRoute('/maintenance/')({ component: MaintenanceDashboard });
 function MaintenanceDashboard() {
+  const dashboardGreeting = useDashboardGreeting();
   const user = useCurrentUser(), navigate = useNavigate();
   const { data, error, loading, load } = useMaintenance();
   const work = data?.work || [], open = work.filter(row => row.status !== 'Completed');
@@ -22,7 +23,7 @@ function MaintenanceDashboard() {
   const count = (value: number) => data && !error ? value : '\u2014';
   return <AppShell title="Maintenance" wide>
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3"><div><Eyebrow>Technical department</Eyebrow><h1 className="mt-1.5 font-display text-[26px] font-medium text-ink">{greeting()}, {user?.name.split(' ')[0] || 'team'}</h1><p className="mt-1.5 text-[13.5px] text-ink-3">Your hotel's issues, tasks and technician progress, updated from the backend.</p></div><div className="flex gap-2"><Button variant="quiet" disabled={loading} onClick={() => void load()}>Refresh</Button><Button icon={ArrowRight} onClick={() => navigate({ to: '/maintenance/assignments' })}>Assignments</Button></div></div>
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><Eyebrow>Technical department</Eyebrow><h1 className="mt-1.5 font-display text-[26px] font-medium text-ink">{dashboardGreeting}, {user?.name.split(' ')[0] || 'team'}</h1><p className="mt-1.5 text-[13.5px] text-ink-3">Your hotel's issues, tasks and technician progress, updated from the backend.</p></div><div className="flex gap-2"><Button variant="quiet" disabled={loading} onClick={() => void load()}>Refresh</Button><Button icon={ArrowRight} onClick={() => navigate({ to: '/maintenance/assignments' })}>Assignments</Button></div></div>
       {error && <p role="alert" className="text-sm text-urgent">{error} Existing records may be out of date.</p>}
       {loading && !data && <p role="status">Loading maintenance records?</p>}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">

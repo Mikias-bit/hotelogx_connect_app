@@ -24,13 +24,14 @@ import { TaskRow } from "@/components/TaskRow";
 import { Badge, Button, Card, Empty, Eyebrow, SectionTitle, StatCard, statusTone } from "@/components/ui";
 import { useCurrentUser } from "@/lib/session";
 import { selectors, useApp } from "@/lib/store";
-import { greeting } from "@/lib/utils";
+import { useDashboardGreeting } from '@/lib/useDashboardGreeting';
 
 export const Route = createFileRoute("/front-office/")({
   component: FrontOfficeDashboard,
 });
 
 function FrontOfficeDashboard() {
+  const dashboardGreeting = useDashboardGreeting();
   const user = useCurrentUser();
   const operations = useOperations();
   const readiness = useReadiness();
@@ -89,7 +90,7 @@ function FrontOfficeDashboard() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <Eyebrow>{greeting()}, {user?.name.split(" ")[0]}</Eyebrow>
+            <Eyebrow>{dashboardGreeting}, {user?.name.split(" ")[0]}</Eyebrow>
             <h1 className="mt-1.5 font-display text-[27px] leading-tight font-medium text-ink sm:text-[30px]">
               You are ahead of the desk today.
             </h1>
