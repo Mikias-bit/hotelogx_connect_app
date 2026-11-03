@@ -911,7 +911,7 @@ function IntegrationsPanel() {
             </div>
             <p className="mt-3 flex items-start gap-1.5 border-t border-line-soft pt-3 text-[11.5px] leading-snug text-ink-4">
               <Shield className="mt-px size-3.5 shrink-0 text-pine-600" />
-              Hotelogx Connect reads live availability and prices. When enabled below, it can create an accepted reservation according to your approval rules. Staff arrange payment; Hotelogx does not charge cards.
+              Hotelogx One reads live availability and prices. When enabled below, it can create an accepted reservation according to your approval rules. Staff arrange payment; Hotelogx does not charge cards.
             </p>
             <BookingSettings />
           </Card>
@@ -1125,7 +1125,7 @@ function BillingPanel() {
 
   const downloadInvoice = (inv: typeof invoices[0]) => {
     const content = `=======================================================
-HOTELOGX CONNECT — SUBSCRIPTION INVOICE
+HOTELOGX ONE — SUBSCRIPTION INVOICE
 =======================================================
 
 Invoice Number : ${inv.number}
@@ -1152,7 +1152,7 @@ Billing Cycle  : ${cycle.toUpperCase()}
 TOTAL BILLED   : ${money(inv.amount)}
 PAYMENT STATUS : PAID (${subscription.paymentMethod.brand} ···· ${subscription.paymentMethod.last4})
 =======================================================
-Thank you for using Hotelogx Connect.
+Thank you for using Hotelogx One.
 `;
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);

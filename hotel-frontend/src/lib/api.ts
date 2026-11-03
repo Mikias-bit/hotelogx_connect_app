@@ -421,7 +421,7 @@ export const api = {
   sendWhatsAppTestMessage: (to: string, message?: string, targetType = 'guest') =>
     request<any>('/whatsapp/send', {
       method: 'POST',
-      body: JSON.stringify({ to, targetType, message: message || 'Hello! This is a test message from Hotelogx Connect.' }),
+      body: JSON.stringify({ to, targetType, message: message || 'Hello! This is a test message from Hotelogx One.' }),
     }),
 };
 

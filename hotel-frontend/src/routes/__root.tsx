@@ -9,11 +9,11 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Hotelogx Connect — AI front office & hotel operations" },
+      { title: "Hotelogx One — AI front office & hotel operations" },
       {
         name: "description",
         content:
-          "Hotelogx Connect is an AI front office and hotel operations assistant. It answers guests on WhatsApp and email, coordinates housekeeping and maintenance, and shows your team only what needs a human.",
+          "Hotelogx One is one intelligent layer for hotel operations and guest communication. It answers guests on WhatsApp and email, coordinates housekeeping and maintenance, and shows your team only what needs a human.",
       },
       { name: "theme-color", content: "#faf8f5" },
     ],

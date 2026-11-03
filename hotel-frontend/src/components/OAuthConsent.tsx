@@ -59,7 +59,7 @@ export function OAuthConsent({
         <div className="p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-4">Sign in with {copy.name}</p>
           <h2 className="mt-1.5 font-display text-[21px] leading-tight font-medium text-ink">
-            {title ?? `Hotelogx Connect wants access to your ${copy.account}`}
+            {title ?? `Hotelogx One wants access to your ${copy.account}`}
           </h2>
           {account && <p className="tnum mt-1.5 font-mono text-[12.5px] text-ink-3">{account}</p>}
 

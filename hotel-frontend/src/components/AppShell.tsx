@@ -23,7 +23,7 @@ import { useRealtimeSync } from "@/lib/useRealtimeSync";
 import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ActivityPanel } from "./ActivityFeed";
-import { Logo } from "./Logo";
+import { Logo, Wordmark } from "./Logo";
 import { WhatsAppOps } from "./WhatsAppOps";
 import { Avatar, Badge, Toaster } from "./ui";
 
@@ -163,10 +163,7 @@ export function AppShell({
         <aside className="sticky top-0 hidden h-dvh w-[236px] shrink-0 flex-col border-r border-line bg-surface/70 px-5 py-5 lg:flex">
           <Link to={nav[0].to} className="flex items-center gap-2.5">
             <Logo />
-            <span>
-              <span className="block font-display text-[15px] leading-tight font-semibold text-ink">Hotelogx</span>
-              <span className="block text-[10.5px] tracking-[0.12em] text-ink-4 uppercase">Connect</span>
-            </span>
+            <Wordmark className="text-[17px]" />
           </Link>
 
           <div className="mt-7 flex-1">{navList}</div>
@@ -250,7 +247,7 @@ export function AppShell({
             <div className="mb-6 flex items-center justify-between">
               <Link to={nav[0].to} className="flex items-center gap-2.5">
                 <Logo size={28} />
-                <span className="font-display text-[15px] font-semibold text-ink">Hotelogx</span>
+                <Wordmark className="text-[16px]" />
               </Link>
               <button onClick={() => setMobileNav(false)} className="text-ink-4">
                 <X className="size-4.5" />

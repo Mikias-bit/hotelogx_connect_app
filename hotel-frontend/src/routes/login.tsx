@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, ArrowRight, Eye, EyeOff, Sparkles, Wand2 } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { Logo, Wordmark } from "@/components/Logo";
 import { Button } from "@/components/ui";
 import { roleHome, signIn } from "@/lib/session";
 import { startOnboarding, toast } from "@/lib/store";
@@ -208,12 +208,12 @@ function Login() {
         />
         <div className="relative">
           <div className="flex items-center gap-2.5">
-            <Logo />
-            <span>
-              <span className="block font-display text-[16px] leading-tight font-semibold text-white">Hotelogx</span>
-              <span className="block text-[10.5px] tracking-[0.14em] text-pine-200 uppercase">Connect</span>
-            </span>
+            <Logo onDark />
+            <Wordmark onDark className="text-[18px]" />
           </div>
+          <p className="mt-3 text-[12.5px] tracking-[0.01em] text-pine-200">
+            One intelligent layer for hotel operations &amp; guest communication
+          </p>
 
           <h1 className="mt-12 max-w-lg font-display text-[38px] leading-[1.08] font-medium text-white xl:text-[44px]">
             An AI front office and operations assistant.
@@ -250,7 +250,7 @@ function Login() {
         <div className="w-full max-w-[400px]">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <Logo />
-            <span className="font-display text-[16px] font-semibold text-ink">Hotelogx Connect</span>
+            <Wordmark className="text-[18px]" />
           </div>
 
           {authMode === "signin" ? (
