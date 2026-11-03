@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Check, LayoutDashboard, Sparkles, X } from "lucide-react";
-import { Logo } from "./Logo";
+import { Logo, Wordmark } from "./Logo";
 import { Badge, Button, Card, Eyebrow } from "./ui";
 import { OnboardingAiStep } from "./OnboardingAiStep";
 import { OnboardingEmailStep } from "./OnboardingEmailStep";
@@ -95,14 +95,11 @@ export function OnboardingWizard() {
         <div className="mx-auto max-w-[720px]">
           <div className="flex items-center gap-2.5">
             <Logo />
-            <span>
-              <span className="block font-display text-[15px] leading-tight font-semibold text-ink">Hotelogx</span>
-              <span className="block text-[10px] tracking-[0.14em] text-ink-4 uppercase">Connect</span>
-            </span>
+            <Wordmark className="text-[17px]" />
           </div>
 
           <h1 className="rise mt-9 font-display text-[32px] leading-[1.1] font-medium text-ink sm:text-[38px]">
-            Welcome to Hotelogx Connect
+            Welcome to Hotelogx One
           </h1>
           <p className="rise mt-3 max-w-[54ch] text-[14px] leading-relaxed text-ink-3" style={{ animationDelay: "60ms" }}>
             Eight steps and {profile.name} is live. Most of them take a minute — you pick the provider, sign in once, and we
@@ -294,7 +291,7 @@ export function OnboardingWizard() {
 
         <p className="mt-6 flex max-w-[64ch] items-start gap-2 border-t border-line-soft pt-5 text-[11.5px] leading-snug text-ink-4">
           <Sparkles className="mt-px size-3.5 shrink-0 text-ai" />
-          Hotelogx Connect reads reservations, availability and rates from your PMS. It never creates, changes or cancels a
+          Hotelogx One reads reservations, availability and rates from your PMS. It never creates, changes or cancels a
           booking and never takes payment — availability questions always finish on your own booking engine.
         </p>
       </main>

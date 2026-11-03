@@ -87,7 +87,7 @@ export function WhatsAppOps({ department }: { department?: "Housekeeping" | "Mai
           {thread.messages.map((m) => (
             <div key={m.id}>
               <div className="max-w-[86%] rounded-[10px] rounded-tl-[3px] bg-white px-2.5 py-2 shadow-[0_1px_1px_rgba(11,20,26,0.13)]">
-                <p className="text-[10px] font-semibold text-wa">{m.from === 'staff' ? thread.contact : 'Hotelogx Connect'}</p>
+                <p className="text-[10px] font-semibold text-wa">{m.from === 'staff' ? thread.contact : 'Hotelogx One'}</p>
                 <p className="mt-1 text-[12.5px] leading-snug whitespace-pre-line text-[#111b21]">{m.body}</p>
                 <p className="tnum mt-1 text-right font-mono text-[9.5px] text-[#667781]">{m.at}</p>
                 {m.buttons && m.buttons.length > 0 && (
