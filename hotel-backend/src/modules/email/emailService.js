@@ -451,7 +451,7 @@ export const emailService = {
    * Send outbound email reply to guest via the hotel's authenticated account (Gmail, Microsoft, or SMTP).
    * Brevo has been completely removed from guest messaging.
    */
-  async sendGuestEmail({ hotelId, conversationId, toEmail, subject, text, author = 'staff', threadId }) {
+  async sendGuestEmail({ hotelId, conversationId, toEmail, subject, text, author = 'staff', threadId, recordMessage = true }) {
     if (!hotelId) {
       throw new Error('hotelId is required to send guest email');
     }
@@ -522,7 +522,7 @@ export const emailService = {
 
     // Record message in database if conversationId exists
     let createdMsg = null;
-    if (conversationId) {
+    if (conversationId && recordMessage) {
       createdMsg = await prisma.message.create({
         data: {
           id: `m-${Date.now()}`,
@@ -552,7 +552,7 @@ export const emailService = {
     }
 
     return {
-      success: true,
+      success: dispatched,
       dispatched,
       messageId: createdMsg?.id || sendResult?.messageId,
       threadId: sendResult?.threadId || threadId,

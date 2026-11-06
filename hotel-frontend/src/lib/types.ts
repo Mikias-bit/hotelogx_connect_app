@@ -103,6 +103,7 @@ export interface Guest {
 }
 
 export interface Message {
+  deliveryStatus?: string;
   id: string;
   author: "guest" | "ai" | "staff" | "system";
   channel: Channel | "internal";
@@ -124,6 +125,7 @@ export interface Escalation {
 }
 
 export interface UpsellIdea {
+  productId?: string;
   label: string;
   value: string;
   reason: string;
@@ -245,7 +247,8 @@ export interface Upsell {
   offer: string;
   value: number;
   channel: Channel;
-  status: "Accepted" | "Sent" | "Declined" | "Expired";
+  status: "Accepted" | "Sent" | "Declined" | "Expired" | "Pending" | "Failed" | "Uncertain";
+  currency?: string;
   date: string;
 }
 

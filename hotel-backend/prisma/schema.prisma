@@ -146,6 +146,8 @@ model Room {
 model Guest {
   id            String         @id
   mewsId        String?
+  email         String?
+  phone         String?
   hotelId       String         @default("hotel-mercier")
   name          String
   room          String?
@@ -1010,10 +1012,44 @@ model PmsUpsellProduct {
   knowledgeDocId String?
   autoPost Boolean @default(false)
   active Boolean @default(true)
+  preArrival Boolean @default(false)
+  keywords String @default("")
   updatedBy String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@unique([hotelId, productId])
+}
+
+model UpsellAutomationConfig {
+  hotelId String @id
+  enabled Boolean @default(false)
+  daysBeforeArrival Int @default(3)
+  channel String @default("email_first")
+  whatsappTemplate String @default("")
+  whatsappLanguage String @default("en_US")
+  updatedBy String
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// A durable delivery claim shared by campaigns, AI recommendations and staff.
+// Never delete/retry a claim after an ambiguous provider outcome.
+model UpsellOutreach {
+  id String @id @default(uuid())
+  hotelId String
+  reservationId String
+  productId String
+  conversationId String
+  source String
+  status String @default("reserved")
+  name String
+  unitAmount Decimal? @db.Decimal(12, 2)
+  currency String?
+  messageId String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  @@unique([hotelId, reservationId, productId])
+  @@index([hotelId, conversationId])
 }
 
 model PmsUpsellOffer {
@@ -1038,6 +1074,7 @@ model PmsUpsellOffer {
   status String @default("offered")
   requestKey String @unique
   acceptedMessageId String?
+  deliveryMessageId String?
   approvedBy String?
   approvedAt DateTime?
   approvalNote String?

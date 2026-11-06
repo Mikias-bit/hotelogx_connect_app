@@ -18,6 +18,14 @@ async function startServer() {
     });
 
     let mailboxPollInterval = null;
+    let upsellInterval = null;
+    if (process.env.NODE_ENV !== 'test') {
+      const { runUpsellCampaigns } = await import('./modules/upsells/upsellRuntime.js');
+      const tick = () => runUpsellCampaigns().catch(error => console.warn('[Upsell campaigns]', error.message));
+      upsellInterval = setInterval(tick, 5 * 60000);
+      upsellInterval.unref?.();
+      void tick();
+    }
     if (process.env.NODE_ENV !== 'test' && process.env.EMAIL_POLLING_ENABLED === 'true') {
       const { emailService } = await import('./modules/email/emailService.js');
       mailboxPollInterval = setInterval(async () => {
@@ -39,6 +47,7 @@ async function startServer() {
     const shutdown = async (signal) => {
       console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
       if (mailboxPollInterval) clearInterval(mailboxPollInterval);
+      if (upsellInterval) clearInterval(upsellInterval);
       server.close(async () => {
         await prisma.$disconnect();
         console.log('🔌 Database disconnected cleanly.');

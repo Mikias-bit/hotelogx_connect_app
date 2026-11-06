@@ -1,3 +1,4 @@
+import { UpsellAutomation } from '@/components/UpsellAutomation';
 import { useEffect, useState } from "react";
 import { PmsUpsells } from '@/components/PmsUpsells';
 import { createFileRoute } from "@tanstack/react-router";
@@ -6,15 +7,14 @@ import { AppShell } from "@/components/AppShell";
 import { Badge, Card, ChannelMark, Empty, Eyebrow, SectionTitle, Sparkline, StatCard, statusTone } from "@/components/ui";
 import { channelLabel, store, useApp } from "@/lib/store";
 import { api } from "@/lib/api";
-import { upsellTrend, weekdays } from "@/lib/data";
 import type { Upsell } from "@/lib/types";
-import { cn, money } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/manager/upsells")({
   component: ManagerUpsells,
 });
 
-const tabs: (Upsell["status"] | "All")[] = ["All", "Accepted", "Sent", "Declined", "Expired"];
+const tabs: (Upsell["status"] | "All")[] = ["All", "Accepted", "Sent", "Declined", "Expired", "Pending", "Failed", "Uncertain"];
 
 function ManagerUpsells() {
   const upsells = useApp((s) => s.upsells);
@@ -31,12 +31,17 @@ function ManagerUpsells() {
 
   const accepted = upsells.filter((u) => u.status === "Accepted");
   const revenue = accepted.reduce((sum, u) => sum + u.value, 0);
-  const sent = upsells.length;
+  const sent = upsells.filter(u => ["Accepted", "Sent", "Declined", "Expired"].includes(u.status)).length;
   const conversion = sent ? Math.round((accepted.length / sent) * 100) : 0;
 
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 6 + i); return d; });
+  const weekdays = days.map(d => d.toLocaleDateString('en', { weekday: 'short' }));
+  const upsellTrend = days.map(d => accepted.filter(u => new Date(u.date).toDateString() === d.toDateString()).reduce((sum, u) => sum + u.value, 0));
+  const currencies = [...new Set(accepted.map(u => u.currency || 'EUR'))];
+  const revenueLabel = currencies.length > 1 ? currencies.map(currency => `${accepted.filter(u => (u.currency || 'EUR') === currency).reduce((sum, u) => sum + u.value, 0).toFixed(2)} ${currency}`).join(' / ') : `${revenue.toFixed(2)} ${currencies[0] || 'EUR'}`;
   const byOffer = Object.entries(
     accepted.reduce<Record<string, number>>((acc, u) => {
-      const key = u.offer.split("(")[0].trim();
+      const key = `${u.offer.split("(")[0].trim()} (${u.currency || "EUR"})`;
       acc[key] = (acc[key] ?? 0) + u.value;
       return acc;
     }, {}),
@@ -45,21 +50,22 @@ function ManagerUpsells() {
     .slice(0, 5);
 
   return (
-    <AppShell title="What the AI sold without being asked">
+    <AppShell title="Catalogue offers and reservation extras">
       <div className="space-y-5">
+        <UpsellAutomation />
         <PmsUpsells />
         <div>
           <Eyebrow>Upsells</Eyebrow>
-          <h1 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">Offers the AI made in conversation</h1>
+          <h1 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">Offers sent to guests</h1>
           <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
-            Only offers from your own priced catalogue, made when the guest gave the AI a reason to make them.
+            Catalogue offers from staff, conversations and automatic pre-arrival messages. Revenue reflects extras posted to the PMS.
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="Total upsell revenue" value={money(revenue)} hint="accepted, today" icon={TrendingUp} tone="good" delay={0} />
+          <StatCard label="Total upsell revenue" value={revenueLabel} hint="posted to the PMS" icon={TrendingUp} tone="good" delay={0} />
           <StatCard label="Offers sent" value={sent} hint="across WhatsApp and email" icon={Send} tone="pine" delay={40} />
-          <StatCard label="Offers accepted" value={accepted.length} hint="guest said yes" icon={CheckCircle2} tone="good" delay={80} />
+          <StatCard label="Offers accepted" value={accepted.length} hint="accepted and posted" icon={CheckCircle2} tone="good" delay={80} />
           <StatCard label="Conversion rate" value={`${conversion}%`} hint="of everything offered" icon={Percent} tone="ai" delay={120} />
         </div>
 
@@ -94,7 +100,7 @@ function ManagerUpsells() {
               </div>
               {list.length === 0 ? (
                 <div className="p-4">
-                  <Empty title="Nothing here yet" hint="Offers appear the moment the AI makes one." />
+                  <Empty title="Nothing here yet" hint="Catalogue offers appear here with their delivery and PMS status." />
                 </div>
               ) : (
                 <ul>
@@ -108,7 +114,7 @@ function ManagerUpsells() {
                         {u.room && <span className="tnum ml-1.5 font-mono text-[11px] text-ink-4">{u.room}</span>}
                       </span>
                       <span className="text-[12.5px] text-ink-2">{u.offer}</span>
-                      <span className="tnum font-mono text-[12.5px] text-ink sm:text-right">{u.value ? money(u.value) : "—"}</span>
+                      <span className="tnum font-mono text-[12.5px] text-ink sm:text-right">{`${u.value.toFixed(2)} ${u.currency || "EUR"}`}</span>
                       <span className="flex items-center gap-1.5 text-[11.5px] text-ink-3">
                         <ChannelMark channel={u.channel} />
                         {channelLabel(u.channel)}
@@ -118,7 +124,7 @@ function ManagerUpsells() {
                           {u.status}
                         </Badge>
                       </span>
-                      <span className="tnum font-mono text-[11px] text-ink-4 sm:text-right">{u.date}</span>
+                      <span className="tnum font-mono text-[11px] text-ink-4 sm:text-right">{new Date(u.date).toLocaleString()}</span>
                     </li>
                   ))}
                 </ul>
@@ -128,15 +134,15 @@ function ManagerUpsells() {
 
           <div className="space-y-4">
             <Card>
-              <SectionTitle title="This week" hint="Accepted upsell revenue" />
-              <Sparkline values={revenue > 0 ? upsellTrend : [0, 0, 0, 0, 0, 0, 0]} tone="good" width={260} height={54} />
+              <SectionTitle title="This week" hint="PMS posted revenue" />
+              <Sparkline values={currencies.length <= 1 ? upsellTrend : [0, 0, 0, 0, 0, 0, 0]} tone="good" width={260} height={54} />
               <p className="tnum mt-1 flex justify-between font-mono text-[10px] text-ink-4">
                 {weekdays.map((d) => (
                   <span key={d}>{d}</span>
                 ))}
               </p>
               <p className="mt-3 border-t border-line-soft pt-3 text-[12.5px] text-ink-3">
-                {money(revenue)} accepted today ({upsells.length} total offers in database).
+                {revenueLabel} posted in total ({upsells.length} catalogue offers). {currencies.length > 1 && "Chart hidden for mixed currencies."}
               </p>
             </Card>
 
@@ -150,7 +156,7 @@ function ManagerUpsells() {
                     <li key={offer}>
                       <p className="flex items-baseline justify-between gap-2 text-[12.5px] text-ink-2">
                         <span className="min-w-0 truncate">{offer}</span>
-                        <span className="tnum shrink-0 font-mono text-[12px] font-medium text-good">{money(value)}</span>
+                        <span className="tnum shrink-0 font-mono text-[12px] font-medium text-good">{value.toFixed(2)}</span>
                       </p>
                     </li>
                   ))}
@@ -161,9 +167,9 @@ function ManagerUpsells() {
             <Card>
               <Eyebrow>How it works</Eyebrow>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">
-                The AI only offers what is in your upsell catalogue, at your prices, and only when the guest has given it a
-                reason — a late train, a long flight, an anniversary. Nothing is charged until a colleague confirms it in the
-                PMS.
+                Staff and AI use the same catalogue and reservation offer history. Pre-arrival messages follow your schedule.
+                Previously offered extras are skipped across channels. Guests must accept an exact quote; posting follows
+                product settings, with staff approval required for early check-in and late checkout.
               </p>
             </Card>
           </div>

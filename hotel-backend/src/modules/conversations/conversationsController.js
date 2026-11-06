@@ -1,4 +1,7 @@
 import { prisma } from '../../config/database.js';
+import { randomUUID } from 'node:crypto';
+import { reserveStaffOffers } from '../upsells/upsellOutreach.js';
+import { reserveQuoteDelivery } from '../upsells/upsellRecommendations.js';
 import { assertGuestHandoffsResolved, handoffLock } from '../operations/guestHandoffs.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 import { emailService } from '../email/emailService.js';
@@ -253,7 +256,14 @@ export const sendReply = async (req, res, next) => {
 
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const msgId = `m-${Date.now()}`;
+    const msgId = `m-${randomUUID()}`;
+    try {
+      const quote = /\bACCEPT ([A-F0-9]{12})\b/i.exec(body);
+      if (quote) {
+        if (!await reserveQuoteDelivery(prisma, hotelId, id, quote[1].toLowerCase(), msgId)) throw Object.assign(new Error('This quote has already been sent or its delivery is pending. Review the previous message.'), { status: 409 });
+      } else await reserveStaffOffers(prisma, { hotelId, conversationId: id, body, messageId: msgId });
+    }
+    catch (error) { return errorResponse(res, error.message, error.status || 409); }
 
     // Outbound Dispatch Lifecycle
     let deliveryStatus = 'sent';
@@ -285,7 +295,7 @@ export const sendReply = async (req, res, next) => {
       }
       if (toEmail) {
         try {
-          await emailService.sendGuestEmail({
+          dispatchResult = await emailService.sendGuestEmail({
             hotelId,
             conversationId: id,
             toEmail,
@@ -294,9 +304,10 @@ export const sendReply = async (req, res, next) => {
             author: 'staff',
             recordMessage: false,
           });
+          if (!dispatchResult?.success || dispatchResult.dispatched === false) deliveryStatus = 'uncertain';
         } catch (err) {
           console.warn('[SendReply Outbound Email Warning]:', err.message);
-          deliveryStatus = 'failed';
+          deliveryStatus = err.definitelyNotSent ? 'failed' : 'uncertain';
           dispatchResult = { success: false, reason: err.message };
         }
       } else {
@@ -311,11 +322,11 @@ export const sendReply = async (req, res, next) => {
           if (dispatchResult.success) {
             deliveryStatus = dispatchResult.simulated ? 'simulated' : 'sent';
           } else {
-            deliveryStatus = 'failed';
+            deliveryStatus = dispatchResult.uncertain ? 'uncertain' : 'failed';
           }
         } catch (err) {
           console.warn('[SendReply Outbound WhatsApp Warning]:', err.message);
-          deliveryStatus = 'failed';
+          deliveryStatus = err.definitelyNotSent ? 'failed' : 'uncertain';
           dispatchResult = { success: false, reason: err.message };
         }
       } else {
@@ -337,6 +348,9 @@ export const sendReply = async (req, res, next) => {
         deliveryStatus,
       },
     });
+
+    await prisma.upsellOutreach.updateMany({ where: { hotelId, messageId: msgId }, data: { status: deliveryStatus, messageId: message.id } });
+    await prisma.pmsUpsellOffer.updateMany({ where: { hotelId, deliveryMessageId: msgId }, data: { deliveryMessageId: message.id } });
 
     await prisma.conversation.update({
       where: { id },
@@ -362,7 +376,7 @@ export const sendReply = async (req, res, next) => {
     return successResponse(
       res,
       { ...message, dispatch: dispatchResult },
-      deliveryStatus === 'failed' ? 'Staff reply saved (outbound delivery failed)' : 'Reply sent'
+      deliveryStatus === 'failed' ? 'Staff reply saved (outbound delivery failed)' : deliveryStatus === 'uncertain' ? 'Delivery is uncertain; review provider history before sending again' : 'Reply sent'
     );
   } catch (error) {
     next(error);

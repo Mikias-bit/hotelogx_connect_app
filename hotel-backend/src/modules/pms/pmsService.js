@@ -307,6 +307,8 @@ export const pmsService = {
           masterGuestMap.set(cust.Id, {
             id: cust.Id,
             mewsId: cust.Id,
+            email: typeof cust.Email === 'string' ? cust.Email.trim().toLowerCase() : null,
+            phone: typeof cust.Phone === 'string' ? cust.Phone.replace(/[^0-9]/g, '') : null,
             hotelId: targetHotelId,
             name: fullName,
             room: null,
@@ -329,7 +331,7 @@ export const pmsService = {
             uniqueReservationMap.set(resKey, res);
           }
 
-          const customerId = res.CustomerId || `cust-${res.Id}`;
+          const customerId = res.CustomerId || (res.AccountType === 'Customer' ? res.AccountId : null) || `cust-${res.Id}`;
           if (!masterGuestMap.has(customerId)) {
             masterGuestMap.set(customerId, {
               id: customerId,
@@ -359,10 +361,10 @@ export const pmsService = {
       const guestList = Array.from(masterGuestMap.values());
       if (guestList.length > 0) {
         const guestTuples = guestList.map((g) => {
-          return [g.id, g.mewsId, g.hotelId, g.name, g.room, g.country, g.language, Boolean(g.vip), Number(g.previousStays) || 0, g.tags, new Date(), new Date()];
+          return [g.id, g.mewsId, g.hotelId, g.name, g.room, g.country, g.language, Boolean(g.vip), Number(g.previousStays) || 0, g.tags, new Date(), new Date(), g.email || null, g.phone || null];
         });
 
-        await bulkUpsert(prisma, "Guest", ["id", "mewsId", "hotelId", "name", "room", "country", "language", "vip", "previousStays", "tags", "createdAt", "updatedAt"], guestTuples, ["id"], ["name", "country", "language", "vip", "previousStays", "tags", "updatedAt"]);
+        await bulkUpsert(prisma, "Guest", ["id", "mewsId", "hotelId", "name", "room", "country", "language", "vip", "previousStays", "tags", "createdAt", "updatedAt", "email", "phone"], guestTuples, ["id"], ["name", "country", "language", "vip", "previousStays", "tags", "updatedAt", "email", "phone"]);
         guestsSynced = guestList.length;
       }
 
@@ -370,11 +372,11 @@ export const pmsService = {
       const reservationList = Array.from(uniqueReservationMap.values());
       if (reservationList.length > 0) {
         const resTuples = reservationList.map((res) => {
-          const customerId = res.CustomerId || `cust-${res.Id}`;
+          const customerId = res.CustomerId || (res.AccountType === 'Customer' ? res.AccountId : null) || `cust-${res.Id}`;
           const resNumber = String(res.Number || res.Id);
-          const nights = calculateNights(res.StartUtc, res.EndUtc);
-          const arrival = res.StartUtc ? new Date(res.StartUtc).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-          const departure = res.EndUtc ? new Date(res.EndUtc).toISOString().slice(0, 10) : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+          const nights = calculateNights(res.ScheduledStartUtc || res.StartUtc, res.ScheduledEndUtc || res.EndUtc);
+          const arrival = (res.ScheduledStartUtc || res.StartUtc) ? new Date(res.ScheduledStartUtc || res.StartUtc).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+          const departure = (res.ScheduledEndUtc || res.EndUtc) ? new Date(res.ScheduledEndUtc || res.EndUtc).toISOString().slice(0, 10) : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
           const adults = res.AdultCount || 1;
           const children = res.ChildCount || 0;
           const roomType = res.ResourceCategoryId || 'Deluxe Room';
@@ -384,7 +386,7 @@ export const pmsService = {
           return [resNumber, res.Id, targetHotelId, customerId, arrival, departure, nights, adults, children, roomType, status, rate, new Date()];
         });
 
-        await bulkUpsert(prisma, "Reservation", ["number", "mewsId", "hotelId", "guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate", "createdAt"], resTuples, ["hotelId", "number"], ["guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate"]);
+        await bulkUpsert(prisma, "Reservation", ["number", "mewsId", "hotelId", "guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate", "createdAt"], resTuples, ["hotelId", "number"], ["mewsId", "guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate"]);
         reservationsSynced = reservationList.length;
       }
 
@@ -555,6 +557,10 @@ export const pmsService = {
         text: actText,
         meta: 'Mews PMS Live Sync',
       });
+
+      // Newly confirmed short-lead bookings are eligible now, without waiting for the next tick.
+      const { upsellPmsTriggers } = await import('../upsells/upsellRuntime.js');
+      await upsellPmsTriggers.afterSync(targetHotelId);
 
       return {
         success: true,

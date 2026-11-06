@@ -1,4 +1,5 @@
 import readinessRoutes from './modules/rooms/readinessRoutes.js';
+import { createUpsellWorkerRouter } from './modules/upsells/upsellWorkerRoutes.js';
 import blockerRoutes from './modules/operations/blockerRoutes.js';
 import guestHandoffRoutes from './modules/operations/guestHandoffRoutes.js';
 import reportRoutes from './modules/reports/reportRoutes.js';
@@ -30,6 +31,10 @@ import { microsoftPushHandler } from './modules/email/microsoft/runtime.js';
 import { microsoftWorkerRouter, microsoftManagerRouter } from './modules/email/microsoft/microsoftRoutes.js';
 import { imapWorkerRouter,imapManagerRouter } from './modules/email/imap/imapRoutes.js';
 const router = Router();
+router.use('/workers', createUpsellWorkerRouter({
+  verify: async (header, auth) => (await import('./modules/email/gmail/runtime.js')).googleOidcVerifier.verifyAuthorizationHeader(header, auth),
+  run: async () => (await import('./modules/upsells/upsellRuntime.js')).runUpsellCampaigns(),
+}));
 router.use('/workers/email',imapWorkerRouter);
 router.use('/email-workers',imapWorkerRouter);
 router.use('/email/imap',imapManagerRouter);

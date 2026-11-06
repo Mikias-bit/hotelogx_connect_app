@@ -1,3 +1,4 @@
+import { upsellPipeline } from '../upsells/upsellReporting.js';
 import { readOperations } from '../reports/reportOperations.js';
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
@@ -49,7 +50,7 @@ export const getBriefing = async (req, res, next) => {
         where: { guest: { hotelId } },
         include: { guest: true },
       }),
-      prisma.upsell.findMany({ where: { hotelId } }).catch(() => []),
+      upsellPipeline(prisma, hotelId),
       prisma.activityItem.findMany({ where: { hotelId }, take: 10, orderBy: { id: 'desc' } }),
     ]);
 
@@ -321,17 +322,7 @@ export const getDashboardTrends = async (req, res, next) => {
           createdAt: true,
         },
       }),
-      prisma.upsell.findMany({
-        where: {
-          hotelId,
-          status: 'Accepted',
-        },
-        select: {
-          id: true,
-          value: true,
-          date: true,
-        },
-      }).catch(() => []),
+      upsellPipeline(prisma, hotelId).then(rows => rows.filter(row => row.status === 'Accepted')),
     ]);
 
     const conversationTrend = [];

@@ -110,7 +110,12 @@ export class WhatsAppWebhookService {
         if (receipt.replyMessageId) await this.db.message.update({ where: { id: receipt.replyMessageId }, data: { deliveryStatus: result.uncertain ? 'uncertain' : 'failed' } });
         if (!result.uncertain) throw new Error('WhatsApp send failed; retry required');
       } else {
-        if (receipt.replyMessageId) await this.db.message.update({ where: { id: receipt.replyMessageId }, data: { id: `m-wa-${result.messageId}`, deliveryStatus: 'sent' } });
+        if (receipt.replyMessageId) {
+          const deliveredId = `m-wa-${result.messageId}`;
+          await this.db.message.update({ where: { id: receipt.replyMessageId }, data: { id: deliveredId, deliveryStatus: 'sent' } });
+          await this.db.upsellOutreach.updateMany({ where: { hotelId, messageId: receipt.replyMessageId }, data: { messageId: deliveredId, status: 'sent' } });
+          await this.db.pmsUpsellOffer.updateMany({ where: { hotelId, deliveryMessageId: receipt.replyMessageId }, data: { deliveryMessageId: deliveredId } });
+        }
         await this.db.whatsAppReceipt.update({ where: { id }, data: { status: 'done', providerMessageId: result.messageId, lastError: null } });
       }
     }

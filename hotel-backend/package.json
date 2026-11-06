@@ -9,6 +9,8 @@
     "start": "node src/server.js",
     "postinstall": "prisma generate",
     "test": "node --test src/tests/*.test.js",
+    "test:upsells": "node --test src/tests/upsellOutreach.test.js src/tests/pmsAiTools.test.js src/tests/pmsUpsellRoutes.test.js src/tests/pmsMcp.test.js",
+    "test:upsells:database": "node scripts/test-upsell-outreach-database.mjs .env",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:seed": "node prisma/seed.js",

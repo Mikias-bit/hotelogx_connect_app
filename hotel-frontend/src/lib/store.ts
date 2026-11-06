@@ -322,41 +322,28 @@ export async function returnToAi(conversationId: string) {
   } catch (error) { toast('Front Office review required', 'attend', error instanceof Error ? error.message : 'Unable to resume AI'); }
 }
 
-export function sendReply(conversationId: string, body: string, as: "ai" | "staff", staffName?: string) {
-  const conversation = store.state.conversations.find((c) => c.id === conversationId);
-  if (!conversation) return;
-  appendMessage(conversationId, {
-    author: as,
-    channel: conversation.primaryChannel,
-    at: clockNow(),
-    body,
-    staffName,
-    confidence: as === "ai" ? 0.95 : undefined,
-  });
-  set((s) => ({
-    conversations: s.conversations.map((c) =>
-      c.id === conversationId
-        ? {
-          ...c,
-          unread: 0,
-          escalation: undefined,
-          aiStatus: as === "ai" ? "ai-handling" : c.aiStatus === "escalated" ? "human-takeover" : c.aiStatus,
-          aiHandledCount: as === "ai" ? c.aiHandledCount + 1 : c.aiHandledCount,
-        }
-        : c,
-    ),
-  }));
-  pushActivity({
-    kind: "ai-reply",
-    text:
-      as === "ai"
-        ? `Approved AI reply sent to ${conversation.guest.name}`
-        : `${staffName ?? "Staff"} replied to ${conversation.guest.name}`,
-    meta: channelLabel(conversation.primaryChannel),
-  });
-  toast(as === "ai" ? "AI reply approved and sent" : "Reply sent", "good", `${conversation.guest.name} · ${channelLabel(conversation.primaryChannel)}`);
-  const guestEmail = (conversation.guest as any)?.email || (conversation.guest?.tags as string[])?.find((t) => t.includes('@'));
-  api.sendReply(conversationId, body, staffName, conversation.primaryChannel, guestEmail);
+export async function sendReply(conversationId: string, body: string, as: "ai" | "staff", staffName?: string): Promise<boolean> {
+  const conversation = store.state.conversations.find(c => c.id === conversationId);
+  if (!conversation) return false;
+  try {
+    const guestEmail = (conversation.guest as any)?.email || conversation.guest?.tags?.find(t => t.includes('@'));
+    const result = await api.sendReply(conversationId, body, staffName, conversation.primaryChannel, guestEmail);
+    if (!result) throw new Error('The server did not confirm this reply.');
+    const message: Message = { id: result.id, author: 'staff', channel: result.channel, at: result.at, body: result.body, staffName, deliveryStatus: result.deliveryStatus };
+    set(s => ({ conversations: s.conversations.map(c => c.id === conversationId ? {
+      ...c, messages: c.messages.some(m => m.id === message.id) ? c.messages : [...c.messages, message],
+      unread: 0, aiStatus: 'human-takeover', suggestedReply: '', lastAt: result.at,
+    } : c) }));
+    if (!['sent', 'delivered', 'read'].includes(result.deliveryStatus)) {
+      toast('Delivery was not confirmed', 'urgent', 'Review provider history before sending again.');
+      return false;
+    }
+    toast(as === 'ai' ? 'AI reply approved and sent' : 'Reply sent', 'good', conversation.guest.name);
+    return true;
+  } catch (error) {
+    toast('Reply not sent', 'urgent', error instanceof Error ? error.message : 'Please refresh and review the conversation.');
+    return false;
+  }
 }
 
 export function addNote(conversationId: string, body: string, staffName: string) {
@@ -399,40 +386,6 @@ export function markRead(conversationId: string) {
   set((s) => ({
     conversations: s.conversations.map((c) => (c.id === conversationId ? { ...c, unread: 0 } : c)),
   }));
-}
-
-export function acceptUpsell(conversationId: string, label: string, value: string) {
-  const conversation = store.state.conversations.find((c) => c.id === conversationId);
-  if (!conversation) return;
-  const numeric = Number(value.replace(/[^0-9.]/g, "")) || 0;
-  set((s) => ({
-    upsells: [
-      {
-        id: uid("up"),
-        guest: conversation.guest.name,
-        room: conversation.guest.room,
-        offer: label,
-        value: numeric,
-        channel: conversation.primaryChannel,
-        status: "Sent",
-        date: `Today ${clockNow()}`,
-      },
-      ...s.upsells,
-    ],
-    conversations: s.conversations.map((c) =>
-      c.id === conversationId ? { ...c, upsellIdeas: c.upsellIdeas.filter((u) => u.label !== label) } : c,
-    ),
-  }));
-  appendMessage(conversationId, {
-    author: "ai",
-    channel: conversation.primaryChannel,
-    at: clockNow(),
-    confidence: 0.96,
-    body: `One more thing — we can add ${label.toLowerCase()} for ${value}. Would you like me to arrange it?`,
-    buttons: ["Yes please", "No thank you"],
-  });
-  pushActivity({ kind: "upsell", text: `Offered ${label} to ${conversation.guest.name}`, meta: value });
-  toast("Offer sent to the guest", "good", `${label} · ${value}`);
 }
 
 /* ----------------------------------------------------------------- tasks -- */

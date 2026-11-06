@@ -16,6 +16,8 @@ export function PmsUpsells({ conversationId }: { conversationId?: string }) {
   const [doc, setDoc] = useState('');
   const [category, setCategory] = useState('other');
   const [autoPost, setAutoPost] = useState(false);
+  const [preArrival, setPreArrival] = useState(false);
+  const [keywords, setKeywords] = useState('');
   const [note, setNote] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -49,17 +51,20 @@ export function PmsUpsells({ conversationId }: { conversationId?: string }) {
     {!conversationId && user?.role === 'manager' && <details><summary className="cursor-pointer font-medium">Configure product prices and autonomy</summary>
       <div className="mt-3 space-y-3">
         <div className="flex gap-2"><input className={input} aria-label="Product search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Breakfast, parking…" /><button className={button} disabled={busy || !query} onClick={() => act(async () => { const result = await api.searchPmsProducts(query); setProducts(result?.products || []); })}>Search Mews products</button></div>
-        <select className={input} aria-label="Product" value={product?.product_id || ''} onChange={e => { const selected = products.find(p => p.product_id === e.target.value); setProduct(selected); setCategory(selected?.category || 'other'); setSource('pms'); setAutoPost(false); }}><option value="">Choose product</option>{products.map(p => <option key={p.product_id} value={p.product_id}>{p.name} — {p.unit_amount} {p.currency}</option>)}</select>
+        <select className={input} aria-label="Product" value={product?.product_id || ''} onChange={e => { const selected = products.find(p => p.product_id === e.target.value); setProduct(selected); setCategory(selected?.category || 'other'); const saved = data?.products?.find((p: any) => p.productId === selected?.product_id); setSource(saved?.priceSource || 'pms'); setAutoPost(saved?.autoPost || false); setPreArrival(saved?.preArrival || false); setKeywords(saved?.keywords || ''); setCategory(saved?.category || selected?.category || 'other'); setAmount(saved?.unitAmount || ''); setDoc(saved?.knowledgeDocId || ''); }}><option value="">Choose product</option>{products.map(p => <option key={p.product_id} value={p.product_id}>{p.name} — {p.unit_amount} {p.currency}</option>)}</select>
         {product && <div className="flex flex-wrap items-center gap-3">
-          <select className={input} aria-label="Category" value={category} onChange={e => setCategory(e.target.value)}><option value="other">Other extra</option><option value="breakfast">Breakfast</option><option value="early_checkin">Early check-in</option><option value="late_checkout">Late checkout</option></select>
+          <select className={input} aria-label="Category" value={category} onChange={e => setCategory(e.target.value)}><option value="other">Other extra</option><option value="breakfast">Breakfast</option><option value="early_checkin">Early check-in</option><option value="late_checkout">Late checkout</option><option value="airport_transfer">Airport transfer</option><option value="romance">Love / romantic package</option><option value="birthday">Birthday package</option><option value="wine">Bubbles / wine</option><option value="parking">Parking</option><option value="upgrade">Room upgrade</option></select>
           <select className={input} aria-label="Price source" value={source} onChange={e => setSource(e.target.value)}><option value="pms">PMS price</option><option value="knowledge">Approved knowledge-base price</option></select>
           {source === 'knowledge' && <><input className={input} aria-label="Approved unit price" type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder={`Unit price (${product.currency})`} /><select className={input} aria-label="Knowledge document" value={doc} onChange={e => setDoc(e.target.value)}><option value="">Source document</option>{docs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></>}
+          <label className="text-sm"><input type="checkbox" checked={preArrival} onChange={e => setPreArrival(e.target.checked)} /> Include in automatic pre-arrival offers</label>
+          <label className="text-sm">Conversation keywords <input className={input} value={keywords} maxLength={500} onChange={e => setKeywords(e.target.value)} placeholder="anniversary, honeymoon" /></label>
           <label className="text-sm"><input type="checkbox" checked={autoPost} onChange={e => setAutoPost(e.target.checked)} /> Allow automatic posting after guest acceptance, subject to hotel policy</label>
-          <button className={button} disabled={busy || (source === 'knowledge' && (!amount || !doc))} onClick={() => act(() => api.savePmsProduct(product.product_id, { serviceId: product.service_id, label: product.name, category, priceSource: source, unitAmount: amount, currency: product.currency, knowledgeDocId: doc, autoPost }))}>Approve product configuration</button>
+          <button className={button} disabled={busy || (source === 'knowledge' && (!amount || !doc))} onClick={() => act(() => api.savePmsProduct(product.product_id, { serviceId: product.service_id, label: product.name, category, priceSource: source, unitAmount: amount, currency: product.currency, knowledgeDocId: doc, autoPost, preArrival, keywords }))}>Approve product configuration</button>
           <p className="text-xs text-slate-600">Early check-in and late checkout always require staff approval.</p>
         </div>}
       </div>
     </details>}
+    {!conversationId && data?.products?.length > 0 && <div className="text-sm"><p className="font-medium">Configured catalogue extras</p>{data.products.map((p: any) => <p key={p.productId}>{p.label} ? {p.preArrival ? 'Pre-arrival enabled' : 'Conversation only'}</p>)}</div>}
     <button className={button} disabled={busy} onClick={() => act(refresh)}>Refresh offers</button>
     <input className={`${input} ml-2`} aria-label="Approval note" value={note} onChange={e => setNote(e.target.value)} placeholder="Approval reason / availability checked" />
     <div className="space-y-2">{data?.offers?.length === 0 && <p className="text-sm">No PMS offers yet.</p>}{data?.offers?.map((offer: any) => <article key={offer.id} className="rounded border p-3 text-sm">

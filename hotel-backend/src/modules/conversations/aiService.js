@@ -1,3 +1,4 @@
+import { prepareCatalogueReply, guardedQuote, reserveQuoteDelivery } from '../upsells/upsellRecommendations.js';
 import { createGuestTask, guestReplyNeedsReview } from '../operations/guestHandoffs.js';
 import { savePmsHandoff } from '../pms/pmsHandoff.js';
 import { verificationHandoffReply } from '../pms/guestVerification.js';
@@ -221,70 +222,6 @@ export async function generateWithGemini({ prompt, systemInstruction = '' }) {
 }
 
 /**
- * Detect dynamic upsell opportunities from guest inquiries and stay context
- */
-export function detectUpsellOpportunities(messageText = '', conversation = null, guest = null) {
-  const upsells = [];
-  const text = (messageText || '').toLowerCase();
-
-  // 1. Late checkout
-  if (/\b(late check-?out|leave later|stay later|check out later|extend stay|checkout time)\b/i.test(text)) {
-    upsells.push({
-      label: 'Late checkout (14:00)',
-      value: '€35',
-      reason: 'Guest inquired about extending check-out time',
-    });
-  }
-
-  // 2. Early check-in
-  if (/\b(early check-?in|early arrival|arrive early|landing early|morning arrival|check in early)\b/i.test(text)) {
-    upsells.push({
-      label: 'Early check-in (12:00)',
-      value: '€30',
-      reason: 'Guest requested or inquired about arriving before standard check-in',
-    });
-  }
-
-  // 3. Artisanal breakfast buffet
-  if (/\b(breakfast|morning meal|buffet|dining room|coffee and croissant)\b/i.test(text)) {
-    upsells.push({
-      label: 'Artisanal breakfast buffet',
-      value: '€22 / guest',
-      reason: 'Guest mentioned or asked about breakfast service',
-    });
-  }
-
-  // 4. Celebration / Champagne / Romantic
-  if (/\b(champagne|wine|prosecco|celebrat|anniversary|birthday|honeymoon|romantic|flowers)\b/i.test(text)) {
-    upsells.push({
-      label: 'Champagne & Belgian pralines on arrival',
-      value: '€55',
-      reason: 'Guest mentioned celebration, romantic stay or special occasion',
-    });
-  }
-
-  // 5. Secure courtyard parking
-  if (/\b(parking|park|car|garage|vehicle|valet)\b/i.test(text)) {
-    upsells.push({
-      label: 'Secure courtyard parking',
-      value: '€25 / day',
-      reason: 'Guest asked about vehicle parking or garage availability',
-    });
-  }
-
-  // 6. Suite upgrade
-  if (/\b(upgrade|suite|better room|bigger room|junior suite|deluxe|balcony|view)\b/i.test(text)) {
-    upsells.push({
-      label: 'Upgrade to Junior Suite',
-      value: '€45 / night',
-      reason: 'Guest expressed interest in room upgrade or enhanced view',
-    });
-  }
-
-  return upsells;
-}
-
-/**
  * Evaluate Hotel AI Mode & Rules for the inbound message & guest
  */
 export async function evaluateAiPolicy({ hotelId, messageText, guest, intentType, database = prisma, strict = false }) {
@@ -412,6 +349,10 @@ export async function evaluateAiPolicy({ hotelId, messageText, guest, intentType
   }
 
   // 7. Topic check based on intentType
+  if (intentType === 'upsell') {
+    const mode = getTopicMode('Upsells', 'Autonomous');
+    return { topic: 'Upsells', mode, requiresApproval: mode !== 'Autonomous', escalate: mode === 'Always Escalate' };
+  }
   if (intentType === 'housekeeping') {
     const mode = getTopicMode('Housekeeping requests', 'Autonomous');
     return {
@@ -557,15 +498,25 @@ export async function processGuestMessageAI({
     const history = verificationResult?.resumeRequest ? [] : await database.message.findMany({ where: { conversationId, ...(since ? { createdAt: { gt: since } } : {}) }, orderBy: { createdAt: 'desc' }, take: 16 });
     const knowledge = verificationResult && !verificationResult.resumeRequest ? { contextText: '', docNames: [] } : await retrieveRelevantKnowledge(effectiveHotelId, effectiveMessage);
     const result = verificationResult && !verificationResult.resumeRequest ? verificationResult : await runPmsAiTools({ hotelId: effectiveHotelId, conversationId, messageText: effectiveMessage,
-      history: history.reverse(), knowledge: knowledge.contextText || '', verification: guestVerification });
+      history: history.reverse(), knowledge: knowledge.contextText || '', verification: guestVerification,
+      executeQuote: (args, execute) => guardedQuote(database, effectiveHotelId, conversationId, args, execute) });
     if (result) {
       const handoff = await savePmsHandoff(database, { hotelId: effectiveHotelId, conversationId, raisedAt: timeStr }, result);
       const hotel = await database.hotel.findUnique({ where: { id: effectiveHotelId } });
       const config = await database.aiConfig.findUnique({ where: { hotelId: effectiveHotelId } });
-      const policy = result.status === 'verification' ? { requiresApproval: false } : await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText: effectiveMessage, guest, database, strict: deferEmailDelivery, intentType: result.status?.startsWith('booking_') ? 'pms_availability' : undefined });
+      const policy = result.status === 'verification' ? { requiresApproval: false } : await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText: effectiveMessage, guest, database, strict: deferEmailDelivery, intentType: result.status?.startsWith('booking_') ? 'pms_availability' : result.catalogueProducts || result.offerId ? 'upsell' : undefined });
       const requiresApproval = policy.requiresApproval || hotel?.aiMode !== 'Autonomous' || config?.autoReply === false || conversation.aiStatus !== 'ai-handling';
+      if (result.catalogueProducts) {
+        const prepared = await prepareCatalogueReply(database, { hotelId: effectiveHotelId, conversationId, products: result.catalogueProducts, automatic: !requiresApproval });
+        Object.assign(result, prepared);
+        await database.conversation.update({ where: { id: conversationId }, data: { upsellIdeas: JSON.stringify(prepared.upsellIdeas || []) } });
+      }
+      if (result.offerId && !requiresApproval) {
+        result.messageId = `m-${crypto.randomUUID()}`;
+        if (!await reserveQuoteDelivery(database, effectiveHotelId, conversationId, result.offerId, result.messageId)) result.replyText = 'This offer has already been sent. Please review the previous quote or contact Front Office.';
+      }
       const message = requiresApproval ? null : await database.message.create({ data: {
-        id: `m-${crypto.randomUUID()}`, conversationId, author: 'ai', channel, body: result.replyText,
+        id: result.messageId || `m-${crypto.randomUUID()}`, conversationId, author: 'ai', channel, body: result.replyText,
         at: timeStr, deliveryStatus: 'pending', knowledge: JSON.stringify(knowledge.docNames || []),
       } });
       if (!requiresApproval && !deferEmailDelivery) dispatchOutboundEmail({ channel, conversation, guest,
@@ -574,26 +525,12 @@ export async function processGuestMessageAI({
       // provider processors interpret that field as suppressing the guest acknowledgment.
       return { handled: true, requiresApproval, aiStatus: handoff ? 'escalated' : requiresApproval ? 'human-takeover' : 'ai-handling',
         type: 'pms_tool', message, replyText: result.replyText, suggestedReply: result.replyText,
-        knowledgeUsed: knowledge.docNames || [], upsellIdeas: [] };
+        knowledgeUsed: knowledge.docNames || [], upsellIdeas: result.upsellIdeas || [] };
     }
   }
 
-  // Detect upsell opportunities
-  const detectedUpsells = detectUpsellOpportunities(messageText, conversation, guest);
-  if (detectedUpsells.length > 0) {
-    try {
-      const existingUpsells = JSON.parse(conversation.upsellIdeas || '[]');
-      const existingLabels = new Set(existingUpsells.map((u) => u.label));
-      const combinedUpsells = [...existingUpsells, ...detectedUpsells.filter((u) => !existingLabels.has(u.label))];
-      await database.conversation.update({
-        where: { id: conversationId },
-        data: {
-          upsellIdeas: JSON.stringify(combinedUpsells),
-          lastAt: timeStr,
-        },
-      });
-    } catch (_) { }
-  }
+  // Generic assistance does not manufacture catalogue offers.
+  const detectedUpsells = [];
 
   // 1. Retrieve RAG Knowledge context strictly for this hotel
   const rag = await retrieveRelevantKnowledge(effectiveHotelId, messageText);

@@ -1,3 +1,4 @@
+import { UpsellRecommendations } from './UpsellRecommendations';
 import { GuestHandoffList } from './GuestHandoffs';
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -10,13 +11,11 @@ import {
   Send,
   Sparkles,
   StickyNote,
-  TrendingUp,
   TriangleAlert,
   UserRound,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import {
-  acceptUpsell,
   addNote,
   channelLabel,
   escalateConversation,
@@ -208,6 +207,7 @@ function Thread({ conversation }: { conversation: Conversation }) {
                 )}
               >
                 {m.body}
+                {!isGuest && m.deliveryStatus && !["sent", "delivered", "read"].includes(m.deliveryStatus) && <p className="mt-2 text-xs text-attend">Delivery: {m.deliveryStatus}. Check before sending again.</p>}
                 {m.buttons && (
                   <span className="mt-2 flex flex-wrap gap-1.5">
                     {m.buttons.map((b) => (
@@ -318,28 +318,7 @@ function GuestContext({
         </div>
       )}
 
-      {conversation.upsellIdeas.length > 0 && (
-        <div>
-          <span className="inline-flex items-center gap-1.5">
-            <TrendingUp className="size-3.5 text-good" />
-            <Eyebrow>Upsell opportunities</Eyebrow>
-          </span>
-          <ul className="mt-1.5 space-y-2">
-            {conversation.upsellIdeas.map((u) => (
-              <li key={u.label} className="rounded-[9px] border border-line bg-surface px-2.5 py-2">
-                <p className="flex items-baseline justify-between gap-2 text-[12.5px] font-medium text-ink">
-                  {u.label}
-                  <span className="tnum font-mono text-[12px] text-good">{u.value}</span>
-                </p>
-                <p className="mt-0.5 text-[11px] text-ink-4">{u.reason}</p>
-                <Button size="sm" variant="quiet" className="mt-1.5 w-full" onClick={() => acceptUpsell(conversation.id, u.label, u.value)}>
-                  Offer to guest
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <UpsellRecommendations key={`extras-${conversation.id}`} conversationId={conversation.id} channel={conversation.primaryChannel} />
 
       <div>
         <div className="flex items-center justify-between">
@@ -390,6 +369,7 @@ function Composer({
   compact?: boolean;
 }) {
   const [draft, setDraft] = useState(conversation.suggestedReply);
+  const [sending, setSending] = useState(false);
   const [mode, setMode] = useState<"reply" | "note">("reply");
   const suggested = conversation.suggestedReply;
 
@@ -433,10 +413,11 @@ function Composer({
             <Button
               size="sm"
               icon={Send}
-              disabled={!draft.trim()}
-              onClick={() => {
-                sendReply(conversation.id, draft.trim(), draft === suggested ? "ai" : "staff", staffName);
-                setDraft("");
+              disabled={!draft.trim() || sending}
+              onClick={async () => {
+                setSending(true);
+                try { if (await sendReply(conversation.id, draft.trim(), draft === suggested ? "ai" : "staff", staffName)) setDraft(""); }
+                finally { setSending(false); }
               }}
             >
               {draft === suggested && suggested ? "Send AI reply" : "Send reply"}

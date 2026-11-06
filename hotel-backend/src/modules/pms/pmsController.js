@@ -123,6 +123,12 @@ export const mewsWebhookController = async (req, res) => {
     }
 
     const result = await pmsService.handleMewsWebhook(hotelId, req.body);
+    // Only authenticated events can initiate an immediate refresh/outreach check.
+    // The refresh uses PMS data, not the webhook's supplied contacts or booking state.
+    if (webhookSecret && result?.success && result.hotelId === hotelId) {
+      const { upsellPmsTriggers } = await import('../upsells/upsellRuntime.js');
+      await upsellPmsTriggers.afterWebhook(hotelId, req.body, true);
+    }
     return successResponse(res, result, 'Mews Webhook processed successfully');
   } catch (error) {
     console.error('[Mews Webhook Error]', error.message);

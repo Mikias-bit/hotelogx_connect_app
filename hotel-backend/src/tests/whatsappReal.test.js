@@ -71,6 +71,8 @@ test('send requires provider message ID and distinguishes acceptance from delive
 function webhookFixture(sendResult = { success: true, messageId: 'out' }) {
   const receipts = new Map(), messages = new Map(); let sends = 0, automations = 0, unread = 0;
   const db = {
+    upsellOutreach: { updateMany: async () => ({ count: 0 }) },
+    pmsUpsellOffer: { updateMany: async () => ({ count: 0 }) },
     whatsAppIntegration: { findFirst: async ({ where }) => where.phoneNumberId === '123' && where.wabaId === '456' ? row : null, update: async () => {} },
     whatsAppReceipt: { upsert: async ({ where, create }) => { if (!receipts.has(where.id)) receipts.set(where.id, { ...create, status: 'pending' }); return { ...receipts.get(where.id) }; }, update: async ({ where, data }) => { receipts.set(where.id, { ...receipts.get(where.id), ...data }); return { ...receipts.get(where.id) }; } },
     guest: { upsert: async () => ({}) },

@@ -22,7 +22,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -132,6 +132,11 @@ export const api = {
   createLostFound: (data: LostFoundInput) => request<LostFoundItem>('/lost-found', { method: 'POST', body: JSON.stringify(data) }),
   updateLostFound: (id: string, data: LostFoundInput & { version: number }) => request<LostFoundItem>(`/lost-found/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   getPmsUpsells: (conversationId?: string) => request<any>(`/pms/upsells${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
+  getUpsellAutomation: () => request<any>('/pms/upsells/automation'),
+  saveUpsellAutomation: (data: unknown) => request<any>('/pms/upsells/automation', { method: 'PUT', body: JSON.stringify(data) }),
+  getUpsellRecommendations: (id: string) => request<any[]>(`/pms/upsells/recommendations/${encodeURIComponent(id)}`),
+  sendUpsellRecommendation: (id: string, productId: string, channel: string) => request<any>(`/pms/upsells/recommendations/${encodeURIComponent(id)}/send`, { method: 'POST', body: JSON.stringify({ productId, channel }) }),
+  recordStaffUpsell: (id: string, productId: string, note: string) => request<any>(`/pms/upsells/recommendations/${encodeURIComponent(id)}/record`, { method: 'POST', body: JSON.stringify({ productId, note }) }),
   getBookingConfig: () => request<any>('/pms/bookings/config'),
   disableBookings: () => request<any>('/pms/bookings/disable', { method: 'POST' }),
   getBookingServices: () => request<any>('/pms/bookings/services'),
@@ -220,7 +225,7 @@ export const api = {
   getConversations: () => request<any[]>('/conversations'),
   getConversationById: (id: string) => request<any>(`/conversations/${id}`),
   sendReply: (id: string, body: string, staffName?: string, channel?: string, toEmail?: string) =>
-    request(`/conversations/${id}/reply`, {
+    request<any>(`/conversations/${id}/reply`, {
       method: 'POST',
       body: JSON.stringify({ body, staffName, channel, toEmail }),
     }),
