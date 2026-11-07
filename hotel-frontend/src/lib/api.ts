@@ -22,7 +22,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -246,6 +246,7 @@ export const api = {
 
   // Upsells
   getUpsells: () => request<any[]>('/upsells'),
+  getUpsellReport: () => request<{ rows: import('./types').Upsell[]; summary: import('./types').UpsellSummary }>('/upsells/report'),
   updateUpsellStatus: (id: string, status: string) =>
     request(`/upsells/${id}/status`, {
       method: 'PATCH',

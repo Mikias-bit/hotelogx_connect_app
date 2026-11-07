@@ -1,4 +1,4 @@
-import { upsellPipeline } from '../upsells/upsellReporting.js';
+import { upsellPipeline, hotelDate, postedTotals } from '../upsells/upsellReporting.js';
 import { readOperations } from '../reports/reportOperations.js';
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
@@ -79,8 +79,8 @@ export const getBriefing = async (req, res, next) => {
         };
       });
 
-    const acceptedUpsellsTotal = upsells
-      .filter((u) => u.status === 'Accepted')
+    const postedUpsellsTotal = upsells
+      .filter((u) => u.postingStatus === 'posted')
       .reduce((acc, curr) => acc + curr.value, 0);
 
     const occupancyPct = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
@@ -105,7 +105,8 @@ export const getBriefing = async (req, res, next) => {
         openIssues,
         pendingEscalations: escalations.length,
       },
-      upsellRevenue: acceptedUpsellsTotal,
+      upsellRevenue: postedUpsellsTotal,
+      upsellPostedTotals: postedTotals(upsells),
       escalations,
       aiAdvice,
       dailyOperations: daily,
@@ -285,29 +286,16 @@ export const getDashboardTrends = async (req, res, next) => {
     if (!hotelId) return errorResponse(res, 'Unauthorized: hotel context required', 401);
 
     const now = new Date();
-    const days = [];
-    const weekdays = [];
-    const weekdayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-      const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-      days.push({
-        dateStr,
-        start,
-        end,
-        dayName: weekdayShort[start.getDay()],
-      });
-      weekdays.push(weekdayShort[start.getDay()]);
-    }
-
-    const sevenDaysAgo = days[0].start;
+    const hotel = await prisma.hotel.findUnique({ where: { id: hotelId }, select: { timezone: true } });
+    const timezone = hotel?.timezone || 'UTC';
+    const today = hotelDate(now, timezone);
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(Date.parse(`${today}T12:00:00Z`) + (i - 6) * 86400000);
+      return { dateStr: date.toISOString().slice(0, 10), dayName: new Intl.DateTimeFormat('en', { weekday: 'short', timeZone: 'UTC' }).format(date) };
+    });
+    const weekdays = days.map(d => d.dayName);
+    // A broad UTC lower bound includes the first local day for all hotel timezones.
+    const sevenDaysAgo = new Date(Date.parse(`${days[0].dateStr}T00:00:00Z`) - 86400000);
 
     const [conversations, upsells] = await Promise.all([
       prisma.conversation.findMany({
@@ -322,18 +310,18 @@ export const getDashboardTrends = async (req, res, next) => {
           createdAt: true,
         },
       }),
-      upsellPipeline(prisma, hotelId).then(rows => rows.filter(row => row.status === 'Accepted')),
+      upsellPipeline(prisma, hotelId).then(rows => rows.filter(row => row.postingStatus === 'posted')),
     ]);
 
     const conversationTrend = [];
     const aiTrend = [];
     const upsellTrend = [];
+    const currencies = [...new Set(upsells.map(u => u.currency))];
     let hasData = false;
 
     for (const day of days) {
       const dayConvs = conversations.filter((c) => {
-        const cDate = new Date(c.createdAt);
-        return cDate >= day.start && cDate <= day.end;
+        return hotelDate(c.createdAt, timezone) === day.dateStr && new Date(c.createdAt) <= now;
       });
 
       const convCount = dayConvs.length;
@@ -352,10 +340,10 @@ export const getDashboardTrends = async (req, res, next) => {
       }
 
       const dayUpsells = upsells.filter((u) => {
-        if (!u.date) return false;
-        return u.date.includes(day.dateStr);
+        if (!u.postedAt) return false;
+        return hotelDate(u.postedAt, timezone) === day.dateStr && new Date(u.postedAt) <= now;
       });
-      const dayUpsellTotal = dayUpsells.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+      const dayUpsellTotal = currencies.length <= 1 ? dayUpsells.reduce((acc, curr) => acc + Math.round(Number(curr.value) * 100), 0) / 100 : 0;
       upsellTrend.push(dayUpsellTotal);
       if (dayUpsellTotal > 0) hasData = true;
     }
@@ -367,6 +355,9 @@ export const getDashboardTrends = async (req, res, next) => {
         conversationTrend,
         aiTrend,
         upsellTrend,
+        upsellTrendCurrency: currencies.length === 1 ? currencies[0] : null,
+        upsellTrendMixedCurrencies: currencies.length > 1,
+        timezone,
         hasData,
       },
       'Dashboard 7-day rolling trends computed'

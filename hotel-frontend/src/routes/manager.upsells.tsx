@@ -1,180 +1,124 @@
 import { UpsellAutomation } from '@/components/UpsellAutomation';
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 import { PmsUpsells } from '@/components/PmsUpsells';
-import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, Percent, Send, TrendingUp } from "lucide-react";
-import { AppShell } from "@/components/AppShell";
-import { Badge, Card, ChannelMark, Empty, Eyebrow, SectionTitle, Sparkline, StatCard, statusTone } from "@/components/ui";
-import { channelLabel, store, useApp } from "@/lib/store";
-import { api } from "@/lib/api";
-import type { Upsell } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { createFileRoute } from '@tanstack/react-router';
+import { CheckCircle2, Percent, Send, TrendingUp } from 'lucide-react';
+import { AppShell } from '@/components/AppShell';
+import { Badge, Card, ChannelMark, Empty, Eyebrow, SectionTitle, Sparkline, StatCard, statusTone } from '@/components/ui';
+import { channelLabel, useApp } from '@/lib/store';
+import { api } from '@/lib/api';
+import type { Upsell, UpsellSummary } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
-export const Route = createFileRoute("/manager/upsells")({
-  component: ManagerUpsells,
-});
-
-const tabs: (Upsell["status"] | "All")[] = ["All", "Accepted", "Sent", "Declined", "Expired", "Pending", "Failed", "Uncertain"];
+export const Route = createFileRoute('/manager/upsells')({ component: ManagerUpsells });
+const tabs = ['All', 'Guest accepted', 'Posted', 'Sent', 'Rejected', 'Expired', 'Pending', 'Failed', 'Uncertain'] as const;
+const amountLabel = (totals: Record<string, number>) => Object.entries(totals).map(([currency, value]) => `${value.toFixed(2)} ${currency}`).join(' / ') || '0.00';
 
 function ManagerUpsells() {
-  const upsells = useApp((s) => s.upsells);
-  const [tab, setTab] = useState<Upsell["status"] | "All">("All");
-
+  const preparationTasks = useApp(s => s.tasks.filter(t => Boolean(t.upsellOfferId)));
+  const [report, setReport] = useState<{ rows: Upsell[]; summary: UpsellSummary } | null>(null);
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState<typeof tabs[number]>('All');
   useEffect(() => {
-    api.getUpsells().then((data) => {
-      if (Array.isArray(data)) {
-        store.setState((s) => ({ ...s, upsells: data }));
-      }
-    });
+    let active = true, loading = false;
+    const load = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const data = await api.getUpsellReport();
+        if (!data) throw new Error('Upsell reporting is unavailable.');
+        if (active) { setReport(data); setError(''); }
+      } catch (err) { if (active) setError(err instanceof Error ? err.message : 'Unable to refresh upsell reporting.'); }
+      finally { loading = false; }
+    };
+    void load();
+    const timer = window.setInterval(load, 30000);
+    window.addEventListener('focus', load);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', load); };
   }, []);
-  const list = tab === "All" ? upsells : upsells.filter((u) => u.status === tab);
+  const upsells = report?.rows || [];
+  const summary = report?.summary;
+  const matches = (u: Upsell, selected: typeof tabs[number]) => selected === 'All' || (selected === 'Guest accepted' ? u.guestAccepted : u.status === selected);
+  const list = upsells.filter(u => matches(u, tab));
+  const posted = upsells.filter(u => u.postingStatus === 'posted');
+  const byOffer = Object.entries(posted.reduce<Record<string, number>>((acc, u) => {
+    const key = `${u.offer} (${u.currency || 'Unknown currency'})`;
+    acc[key] = (acc[key] || 0) + Math.round(u.value * 100);
+    return acc;
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const weekCurrencies = Object.keys(summary?.week.totals || {});
+  const timestamp = (date: string) => new Date(date).toLocaleString(undefined, { timeZone: summary?.timezone || 'UTC' });
 
-  const accepted = upsells.filter((u) => u.status === "Accepted");
-  const revenue = accepted.reduce((sum, u) => sum + u.value, 0);
-  const sent = upsells.filter(u => ["Accepted", "Sent", "Declined", "Expired"].includes(u.status)).length;
-  const conversion = sent ? Math.round((accepted.length / sent) * 100) : 0;
-
-  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 6 + i); return d; });
-  const weekdays = days.map(d => d.toLocaleDateString('en', { weekday: 'short' }));
-  const upsellTrend = days.map(d => accepted.filter(u => new Date(u.date).toDateString() === d.toDateString()).reduce((sum, u) => sum + u.value, 0));
-  const currencies = [...new Set(accepted.map(u => u.currency || 'EUR'))];
-  const revenueLabel = currencies.length > 1 ? currencies.map(currency => `${accepted.filter(u => (u.currency || 'EUR') === currency).reduce((sum, u) => sum + u.value, 0).toFixed(2)} ${currency}`).join(' / ') : `${revenue.toFixed(2)} ${currencies[0] || 'EUR'}`;
-  const byOffer = Object.entries(
-    accepted.reduce<Record<string, number>>((acc, u) => {
-      const key = `${u.offer.split("(")[0].trim()} (${u.currency || "EUR"})`;
-      acc[key] = (acc[key] ?? 0) + u.value;
-      return acc;
-    }, {}),
-  )
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  return (
-    <AppShell title="Catalogue offers and reservation extras">
-      <div className="space-y-5">
-        <UpsellAutomation />
-        <PmsUpsells />
-        <div>
-          <Eyebrow>Upsells</Eyebrow>
-          <h1 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">Offers sent to guests</h1>
-          <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">
-            Catalogue offers from staff, conversations and automatic pre-arrival messages. Revenue reflects extras posted to the PMS.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="Total upsell revenue" value={revenueLabel} hint="posted to the PMS" icon={TrendingUp} tone="good" delay={0} />
-          <StatCard label="Offers sent" value={sent} hint="across WhatsApp and email" icon={Send} tone="pine" delay={40} />
-          <StatCard label="Offers accepted" value={accepted.length} hint="accepted and posted" icon={CheckCircle2} tone="good" delay={80} />
-          <StatCard label="Conversion rate" value={`${conversion}%`} hint="of everything offered" icon={Percent} tone="ai" delay={120} />
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-[1fr_320px] lg:items-start">
-          <div className="space-y-3">
-            <div className="flex gap-1.5">
-              {tabs.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors",
-                    t === tab ? "border-pine-600 bg-pine-600 text-white" : "border-line bg-surface text-ink-3 hover:border-ink-4 hover:text-ink",
-                  )}
-                >
-                  {t}
-                  <span className="tnum ml-1.5 font-mono text-[10.5px] opacity-70">
-                    {t === "All" ? upsells.length : upsells.filter((u) => u.status === t).length}
-                  </span>
-                </button>
-              ))}
+  return <AppShell title="Catalogue offers and reservation extras">
+    <div className="space-y-5">
+      <UpsellAutomation />
+      <PmsUpsells />
+      <div>
+        <Eyebrow>Upsells</Eyebrow>
+        <h1 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">Offers sent to guests</h1>
+        <p className="mt-1.5 max-w-2xl text-[13.5px] text-ink-3">Guest acceptance and PMS posting are tracked separately. Posted value is added to the reservation bill; payment collection is not tracked here.</p>
+      </div>
+      {error && <p role="alert" className="text-sm text-attend">{error} {report && 'The last loaded figures are shown.'}</p>}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Total PMS posted value" value={summary ? amountLabel(summary.postedTotals) : '...'} hint="all time, not payments collected" icon={TrendingUp} tone="good" delay={0} />
+        <StatCard label="Offers sent" value={summary?.sent ?? '...'} hint="confirmed delivery or recorded staff offer" icon={Send} tone="pine" delay={40} />
+        <StatCard label="Guest accepted" value={summary?.accepted ?? '...'} hint="includes offers awaiting staff approval" icon={CheckCircle2} tone="good" delay={80} />
+        <StatCard label="Conversion rate" value={summary ? `${summary.conversion}%` : '...'} hint="guest accepted / sent, all time" icon={Percent} tone="ai" delay={120} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px] lg:items-start">
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-1.5">
+            {tabs.map(t => <button key={t} onClick={() => setTab(t)} className={cn('rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors', t === tab ? 'border-pine-600 bg-pine-600 text-white' : 'border-line bg-surface text-ink-3 hover:border-ink-4')}>
+              {t}<span className="tnum ml-1.5 font-mono text-[10.5px] opacity-70">{upsells.filter(u => matches(u, t)).length}</span>
+            </button>)}
+          </div>
+          <Card pad={false}>
+            <div className="hidden grid-cols-[1.1fr_1.7fr_0.6fr_0.7fr_0.9fr_1fr] gap-3 border-b border-line bg-paper/60 px-4 py-2.5 text-[10.5px] font-semibold uppercase sm:grid">
+              <span>Guest</span><span>Offer</span><span className="text-right">Value</span><span>Channel</span><span>Status</span><span className="text-right">Event date</span>
             </div>
-
-            <Card pad={false}>
-              <div className="hidden grid-cols-[1.1fr_1.7fr_0.6fr_0.7fr_0.7fr_0.8fr] gap-3 border-b border-line bg-paper/60 px-4 py-2.5 text-[10.5px] font-semibold tracking-[0.1em] text-ink-4 uppercase sm:grid">
-                <span>Guest</span>
-                <span>Offer</span>
-                <span className="text-right">Value</span>
-                <span>Channel</span>
-                <span>Status</span>
-                <span className="text-right">Date</span>
-              </div>
-              {list.length === 0 ? (
-                <div className="p-4">
-                  <Empty title="Nothing here yet" hint="Catalogue offers appear here with their delivery and PMS status." />
-                </div>
-              ) : (
-                <ul>
-                  {list.map((u) => (
-                    <li
-                      key={u.id}
-                      className="grid grid-cols-1 gap-1.5 border-b border-line-soft px-4 py-3 last:border-b-0 sm:grid-cols-[1.1fr_1.7fr_0.6fr_0.7fr_0.7fr_0.8fr] sm:items-center sm:gap-3"
-                    >
-                      <span className="text-[13px] font-medium text-ink">
-                        {u.guest}
-                        {u.room && <span className="tnum ml-1.5 font-mono text-[11px] text-ink-4">{u.room}</span>}
-                      </span>
-                      <span className="text-[12.5px] text-ink-2">{u.offer}</span>
-                      <span className="tnum font-mono text-[12.5px] text-ink sm:text-right">{`${u.value.toFixed(2)} ${u.currency || "EUR"}`}</span>
-                      <span className="flex items-center gap-1.5 text-[11.5px] text-ink-3">
-                        <ChannelMark channel={u.channel} />
-                        {channelLabel(u.channel)}
-                      </span>
-                      <span>
-                        <Badge tone={statusTone(u.status)} dot>
-                          {u.status}
-                        </Badge>
-                      </span>
-                      <span className="tnum font-mono text-[11px] text-ink-4 sm:text-right">{new Date(u.date).toLocaleString()}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          </div>
-
-          <div className="space-y-4">
-            <Card>
-              <SectionTitle title="This week" hint="PMS posted revenue" />
-              <Sparkline values={currencies.length <= 1 ? upsellTrend : [0, 0, 0, 0, 0, 0, 0]} tone="good" width={260} height={54} />
-              <p className="tnum mt-1 flex justify-between font-mono text-[10px] text-ink-4">
-                {weekdays.map((d) => (
-                  <span key={d}>{d}</span>
-                ))}
-              </p>
-              <p className="mt-3 border-t border-line-soft pt-3 text-[12.5px] text-ink-3">
-                {revenueLabel} posted in total ({upsells.length} catalogue offers). {currencies.length > 1 && "Chart hidden for mixed currencies."}
-              </p>
-            </Card>
-
-            <Card>
-              <SectionTitle title="Best performing offers" />
-              {byOffer.length === 0 ? (
-                <p className="py-2 text-[12.5px] text-ink-4">No accepted offers yet.</p>
-              ) : (
-                <ul className="space-y-2.5">
-                  {byOffer.map(([offer, value]) => (
-                    <li key={offer}>
-                      <p className="flex items-baseline justify-between gap-2 text-[12.5px] text-ink-2">
-                        <span className="min-w-0 truncate">{offer}</span>
-                        <span className="tnum shrink-0 font-mono text-[12px] font-medium text-good">{value.toFixed(2)}</span>
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-
-            <Card>
-              <Eyebrow>How it works</Eyebrow>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">
-                Staff and AI use the same catalogue and reservation offer history. Pre-arrival messages follow your schedule.
-                Previously offered extras are skipped across channels. Guests must accept an exact quote; posting follows
-                product settings, with staff approval required for early check-in and late checkout.
-              </p>
-            </Card>
-          </div>
+            {!list.length ? <div className="p-4"><Empty title={report ? 'Nothing here yet' : 'Loading offers'} hint="Offers show guest acceptance, delivery and PMS posting separately." /></div> : <ul>
+              {list.map(u => <li key={u.id} className="grid grid-cols-1 gap-1.5 border-b border-line-soft px-4 py-3 last:border-b-0 sm:grid-cols-[1.1fr_1.7fr_0.6fr_0.7fr_0.9fr_1fr] sm:items-center sm:gap-3">
+                <span className="text-[13px] font-medium text-ink">{u.guest}{u.room && <span className="ml-1.5 font-mono text-[11px] text-ink-4">{u.room}</span>}</span>
+                <span className="text-[12.5px] text-ink-2">{u.offer}</span>
+                <span className="font-mono text-[12.5px] sm:text-right">{u.value.toFixed(2)} {u.currency || 'Unknown currency'}</span>
+                <span className="flex items-center gap-1.5 text-[11.5px] text-ink-3"><ChannelMark channel={u.channel} />{channelLabel(u.channel)}</span>
+                <span><Badge tone={statusTone(u.status)} dot>{u.status === 'Accepted' ? 'Guest accepted' : u.status}</Badge>
+                  {u.guestAccepted && u.status !== 'Accepted' && <span className="mt-1 block text-[10px] text-ink-3">Guest accepted</span>}
+                  {u.postingStatus === 'pending_approval' && <span className="mt-1 block text-[10px] text-ink-3">Awaiting staff approval</span>}
+                  {preparationTasks.filter(t => t.upsellOfferId === u.id).map(t => <span key={t.id} className="mt-1 block text-[10px] text-ink-3">Preparation: {t.status} | {t.department} | Room {t.room || 'awaiting assignment'}</span>)}
+                  {u.status === 'Posted' && <span className="mt-1 block text-[10px] text-ink-3">Payment not tracked</span>}
+                </span>
+                <span className="font-mono text-[11px] text-ink-4 sm:text-right">
+                  {u.status === 'Posted' ? u.postedAt ? `Posted ${timestamp(u.postedAt)}` : 'Posting date unavailable' : u.acceptedAt ? `Accepted ${timestamp(u.acceptedAt)}` : `Created ${timestamp(u.date)}`}
+                </span>
+              </li>)}
+            </ul>}
+          </Card>
+        </div>
+        <div className="space-y-4">
+          <Card>
+            <SectionTitle title="This week" hint="PMS posted value" />
+            {summary && <>
+              <p className="mb-3 text-xs text-ink-3">{summary.week.start} to {summary.week.end} ({summary.timezone})</p>
+              {weekCurrencies.length ? weekCurrencies.map(currency => <div key={currency} className="mt-2">
+                <p className="text-xs text-ink-3">{currency}</p>
+                <Sparkline values={summary.week.days.map(day => day.totals[currency] || 0)} tone="good" width={260} height={54} />
+              </div>) : <p className="text-sm text-ink-3">No dated PMS postings this week.</p>}
+              <p className="mt-1 flex justify-between font-mono text-[10.5px] text-ink-4">{summary.week.days.map(day => <span key={day.date}>{day.label}</span>)}</p>
+              <p className="mt-3 border-t border-line-soft pt-3 text-[12.5px] text-ink-3">{amountLabel(summary.week.totals)} posted this week ({summary.week.postedCount} offers).</p>
+              {summary.undatedPostingCount > 0 && <p className="mt-2 text-xs text-attend">{summary.undatedPostingCount} older postings have no reliable posting date. Included in the all-time total, excluded from weekly figures.</p>}
+            </>}
+          </Card>
+          <Card>
+            <SectionTitle title="Best performing offers" hint="All-time PMS posted value" />
+            {!byOffer.length ? <p className="py-2 text-[12.5px] text-ink-4">No posted offers yet.</p> : <ul className="space-y-2.5">{byOffer.map(([offer, cents]) => <li key={offer} className="flex justify-between gap-2 text-[12.5px] text-ink-2"><span>{offer}</span><span className="font-mono text-good">{(cents / 100).toFixed(2)}</span></li>)}</ul>}
+          </Card>
+          <Card>
+            <Eyebrow>How it works</Eyebrow>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">Acceptance counts when the guest accepts the exact offer, including while staff approval is pending. Posted value counts only after the PMS confirms the extra was added. Weekly figures use that posting date in the hotel timezone. Neither figure confirms payment.</p>
+          </Card>
         </div>
       </div>
-    </AppShell>
-  );
+    </div>
+  </AppShell>;
 }

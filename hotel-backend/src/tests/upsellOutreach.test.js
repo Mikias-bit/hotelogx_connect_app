@@ -102,7 +102,7 @@ test('model prose without a catalogue lookup cannot send an invented priced offe
 test('reporting replaces invitation with PMS quote and counts revenue only after posting', async () => {
   const row = { hotelId: 'h', reservationId: 'r', productId: 'p', conversationId: 'c', createdAt: new Date('2026-11-05'), currency: 'EUR', name: 'Wine' };
   const db = { pmsUpsellOffer: { findMany: async () => [{ ...row, id: 'abcdef123456', totalAmount: 50, status: 'posted', expiresAt: new Date('2026-11-06') }] }, upsellOutreach: { findMany: async () => [{ ...row, id: 'invitation', status: 'sent', unitAmount: 25 }] }, conversation: { findMany: async () => [{ id: 'c', primaryChannel: 'email', guest: { name: 'Guest' } }] }, message: { findMany: async () => [] } };
-  const rows = await upsellPipeline(db, 'h'); assert.equal(rows.length, 1); assert.equal(rows[0].status, 'Accepted'); assert.equal(rows[0].value, 50);
+  const rows = await upsellPipeline(db, 'h'); assert.equal(rows.length, 1); assert.equal(rows[0].status, 'Posted'); assert.equal(rows[0].value, 50);
   db.pmsUpsellOffer.findMany = async () => [];
   db.upsellOutreach.findMany = async () => [{ ...row, id: 'invitation', status: 'uncertain', unitAmount: 25 }];
   assert.equal((await upsellPipeline(db, 'h'))[0].status, 'Uncertain');

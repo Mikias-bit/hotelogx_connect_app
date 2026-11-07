@@ -28,7 +28,6 @@ import { Badge, Button, Card, Empty, Eyebrow, Meter, SectionTitle, Sparkline, St
 import { api } from "@/lib/api";
 import { useCurrentUser } from "@/lib/session";
 import { selectors, useApp } from "@/lib/store";
-import { money } from "@/lib/utils";
 import { useDashboardGreeting } from '@/lib/useDashboardGreeting';
 
 export const Route = createFileRoute("/manager/")({
@@ -49,7 +48,10 @@ function ManagerDashboard() {
   const rooms = useApp((s) => s.rooms);
   const tasks = useApp((s) => s.tasks);
   const upsells = useApp((s) => s.upsells);
-  const upsellTotal = useApp(selectors.acceptedUpsellTotal);
+  const postedAmounts = upsells.filter(u => u.postingStatus === 'posted').reduce<Record<string, number>>((totals, u) => {
+    const currency = u.currency || 'Unknown currency'; totals[currency] = (totals[currency] || 0) + Math.round(u.value * 100); return totals;
+  }, {});
+  const upsellTotalLabel = Object.entries(postedAmounts).map(([currency, cents]) => `${(cents / 100).toFixed(2)} ${currency}`).join(' / ') || '0.00';
   const conversations = useApp((s) => s.conversations);
 
   const [trends, setTrends] = useState<{
@@ -113,9 +115,9 @@ function ManagerDashboard() {
       tone: roomsToClean > 0 ? "attend" : "good",
     },
     {
-      text: `${money(upsellTotal)} of upsells accepted today from ${upsells.length} offers made by AI.`,
+      text: `${upsellTotalLabel} of upsells posted to the PMS across ${upsells.length} recorded offers.`,
       tone: "good",
-      meta: `${upsells.filter((u) => u.status === "Accepted").length} accepted`,
+      meta: `${upsells.filter((u) => u.guestAccepted).length} accepted`,
     },
   ];
 
@@ -207,6 +209,7 @@ function ManagerDashboard() {
             onClick={() => navigate({ to: "/manager/conversations", search: { filter: "escalated" } })}
           />}</GuestEscalationCount>
           <StatCard label="Open tasks" value={openTasks.length} hint="across 3 departments" icon={ClipboardList} tone="attend" delay={200} onClick={() => navigate({ to: "/manager/tasks" })} />
+          <StatCard label="Upsell preparation" value={tasks.filter(t => t.upsellOfferId && t.status !== 'Completed').length} hint={`${tasks.filter(t => t.upsellOfferId && t.status === 'Completed').length} completed`} icon={ClipboardList} tone="attend" onClick={() => navigate({ to: '/manager/tasks' })} />
           <StatCard label="Maintenance" value={openIssues.length} hint={`${outOfService} rooms affected`} icon={Wrench} tone="attend" delay={240} />
         </div>
 
@@ -312,11 +315,11 @@ function ManagerDashboard() {
                     suffix: conversations.length === 0 ? "Awaiting inquiries" : "of all threads",
                   },
                   {
-                    label: "Upsell revenue",
+                    label: "PMS posted value",
                     values: trends.upsellTrend,
                     tone: "ai" as const,
-                    value: money(upsellTotal),
-                    suffix: upsells.length === 0 ? "No offers accepted yet" : "accepted total",
+                    value: upsellTotalLabel,
+                    suffix: Object.keys(postedAmounts).length > 1 ? 'All time; chart omitted for mixed currencies' : 'All time; chart shows posting dates',
                   },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between gap-3 border-t border-line-soft pt-4 first:border-t-0 first:pt-0">
@@ -332,10 +335,10 @@ function ManagerDashboard() {
                   </div>
                 ))}
                 <div className="flex items-center justify-between border-t border-line-soft pt-3">
-                  <p className="text-[12px] text-ink-3">Accepted upsells, all time in view</p>
+                  <p className="text-[12px] text-ink-3">PMS posted upsells, all time in view</p>
                   <p className="tnum inline-flex items-center gap-1 font-mono text-[13px] font-medium text-good">
                     <TrendingUp className="size-3.5" />
-                    {money(upsellTotal)}
+                    {upsellTotalLabel}
                   </p>
                 </div>
               </Card>

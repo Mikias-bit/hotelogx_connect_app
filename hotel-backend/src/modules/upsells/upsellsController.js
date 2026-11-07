@@ -1,6 +1,18 @@
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
-import { upsellPipeline } from './upsellReporting.js';
+import { upsellPipeline, upsellSummary } from './upsellReporting.js';
+
+export const getUpsellReport = async (req, res, next) => {
+  try {
+    const hotelId = req.user?.hotelId;
+    if (!hotelId) return errorResponse(res, 'Hotel context required', 401);
+    const [rows, hotel] = await Promise.all([
+      upsellPipeline(prisma, hotelId),
+      prisma.hotel.findUnique({ where: { id: hotelId }, select: { timezone: true } }),
+    ]);
+    return successResponse(res, { rows, summary: upsellSummary(rows, hotel?.timezone || 'UTC') });
+  } catch (error) { next(error); }
+};
 
 export const getUpsells = async (req, res, next) => {
   try {

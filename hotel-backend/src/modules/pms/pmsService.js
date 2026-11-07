@@ -383,10 +383,13 @@ export const pmsService = {
           const status = mapMewsReservationState(res.State);
           const rate = res.Rate?.Amount ? `€${res.Rate.Amount}/night` : '€150/night';
 
-          return [resNumber, res.Id, targetHotelId, customerId, arrival, departure, nights, adults, children, roomType, status, rate, new Date()];
+          const resourceId = res.AssignedResourceId || res.SpaceId || res.ResourceId;
+          const resource = mewsResources.find(room => room.Id === resourceId);
+          const assignedRoom = resource ? String(resource.Name || resource.Number || '') || null : null;
+          return [resNumber, res.Id, targetHotelId, customerId, arrival, departure, nights, adults, children, roomType, status, rate, new Date(), assignedRoom];
         });
 
-        await bulkUpsert(prisma, "Reservation", ["number", "mewsId", "hotelId", "guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate", "createdAt"], resTuples, ["hotelId", "number"], ["mewsId", "guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate"]);
+        await bulkUpsert(prisma, "Reservation", ["number", "mewsId", "hotelId", "guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate", "createdAt", "assignedRoom"], resTuples, ["hotelId", "number"], ["mewsId", "guestId", "arrival", "departure", "nights", "adults", "children", "roomType", "status", "rate", "assignedRoom"]);
         reservationsSynced = reservationList.length;
       }
 

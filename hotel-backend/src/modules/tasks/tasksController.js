@@ -173,8 +173,9 @@ export const updateTaskStatus = async (req, res, next) => {
       if (!fresh || fresh.version !== existing.version) throw Object.assign(new Error('Task changed; refresh first'), { status: 409 });
       if (!['manager', 'front-office', 'housekeeping'].includes(req.user.role) || (req.user.role === 'housekeeping' && fresh.department !== 'Housekeeping')) throw Object.assign(new Error('Department access required'), { status: 403 });
       if (status && !['New', 'Assigned', 'In Progress', 'Waiting', 'Escalated', 'Completed'].includes(status)) throw Object.assign(new Error('Invalid status'), { status: 400 });
+      if (fresh.upsellOfferId && status === 'Completed' && !fresh.room) throw Object.assign(new Error('Assign a reservation room before completing preparation'), { status: 409 });
       const saved = await tx.task.update({
-      where: { id },
+      where: { id, ...(fresh.upsellOfferId ? { version: fresh.version } : {}) },
       data: {
         version: { increment: 1 },
         status: status || existing.status,
@@ -183,7 +184,7 @@ export const updateTaskStatus = async (req, res, next) => {
         trail: {
           create: {
             at: timeStr,
-            text: note || `Status updated to ${status || 'updated'}`,
+            text: note || `Status updated to ${status || 'updated'} by ${req.user.name || req.user.id}`,
             via,
           },
         },

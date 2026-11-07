@@ -63,10 +63,12 @@ export function createUpsellRouter({ db = prisma, client = createPmsMcpClient(),
       await conversation(req, conversationId);
     }
     const where = { hotelId: req.user.hotelId, ...(conversationId ? { conversationId } : {}) };
+    const offers = await db.pmsUpsellOffer.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 });
     return {
       products: conversationId ? [] : await db.pmsUpsellProduct.findMany({ where: { hotelId: req.user.hotelId } }),
-      offers: await db.pmsUpsellOffer.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }),
+      offers,
       bindings: await db.pmsConversationBinding.findMany({ where }),
+      preparationTasks: await db.task.findMany({ where: { hotelId: req.user.hotelId, upsellOfferId: { not: null }, ...(conversationId ? { upsellOfferId: { in: offers.map(o => o.id) } } : {}) }, select: { id: true, upsellOfferId: true, room: true, status: true, department: true, completedAt: true } }),
     };
   }));
   router.get('/products/search', wrap(async req => {
@@ -87,6 +89,8 @@ export function createUpsellRouter({ db = prisma, client = createPmsMcpClient(),
   router.put('/products/:productId', wrap(async req => {
     requireValue(req.user.role === 'manager', 'Only managers can configure product pricing and autonomy');
     const b = req.body;
+    requireValue(b.preparationDepartment === undefined || b.preparationDepartment === null || ['Housekeeping', 'Front Office'].includes(b.preparationDepartment), 'Choose Housekeeping, Front Office, or no preparation task');
+    requireValue(b.preparationInstructions === undefined || (typeof b.preparationInstructions === 'string' && b.preparationInstructions.length <= 2000), 'Preparation instructions must be under 2000 characters');
     requireValue(typeof b.label === 'string' && b.label.trim().length > 0 && b.label.length <= 200, 'Enter a product label');
     requireValue(upsellCategories.includes(b.category) && ['pms', 'knowledge'].includes(b.priceSource), 'Invalid product category or price source');
     requireValue(b.keywords === undefined || (typeof b.keywords === 'string' && b.keywords.length <= 500), 'Keywords must be under 500 characters');
@@ -102,6 +106,8 @@ export function createUpsellRouter({ db = prisma, client = createPmsMcpClient(),
     const values = { serviceId: product.ServiceId, label: b.label.trim(), category: b.category, priceSource: b.priceSource,
       unitAmount: b.priceSource === 'knowledge' ? b.unitAmount : null, currency: b.priceSource === 'knowledge' ? b.currency : null,
       knowledgeDocId: b.priceSource === 'knowledge' ? b.knowledgeDocId : null, autoPost: b.autoPost === true,
+      ...(b.preparationDepartment !== undefined ? { preparationDepartment: b.preparationDepartment } : {}),
+      ...(b.preparationInstructions !== undefined ? { preparationInstructions: b.preparationInstructions.trim() } : {}),
       active: b.active !== false, preArrival: b.preArrival === true, keywords: b.keywords || '', updatedBy: req.user.id };
     return db.pmsUpsellProduct.upsert({ where: { hotelId_productId: { hotelId: req.user.hotelId, productId: product.Id } },
       create: { hotelId: req.user.hotelId, productId: product.Id, ...values }, update: values });

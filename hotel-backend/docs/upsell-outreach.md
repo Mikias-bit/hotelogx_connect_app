@@ -52,12 +52,25 @@ Changed/expired quotes are referred to Front Office instead of automatically re-
 Uncertain outcomes are never automatically retried. Staff must inspect provider/PMS history.
 
 The pipeline reports invitations and PMS offers together, replacing an invitation with its
-subsequent quote. Revenue means **posted to PMS**, not payment collected. Pending, failed and
-uncertain deliveries are visible. Legacy editable `Upsell` rows are no longer revenue authority.
+subsequent quote. Conversion is **guest accepted / sent**, including guest acceptances awaiting
+staff approval, later rejected by staff or with an uncertain posting outcome. Only confirmed
+delivery, recorded external staff offers, or a validated acceptance count as sent; an expired
+or rejected unsent draft does not inflate the denominator. Guest acceptance, posting and payment
+are separate: the app does not track payment or mark posted offers paid.
+
+Posted value counts only rows confirmed `posted` by the PMS service. The database captures the
+first transition to posted, including direct SQL writes by the separate PMS service; repeated
+callbacks or later edits cannot change that date. Acceptance dates come from the linked guest
+acceptance message. **This week** means Monday through Sunday in the hotel's timezone, using
+posting dates for both the daily chart and weekly total. Currencies have separate totals/charts.
+Older posted rows without reliable posting timestamps remain in all-time totals and are explicitly
+excluded from weekly figures. Creation time and mutable `updatedAt` are never substituted.
+Pending, failed and uncertain deliveries remain visible. Legacy editable `Upsell` rows are no
+longer revenue authority.
 
 ## Deployment
 
-1. Apply Prisma migration `20261105010000_upsell_outreach` and regenerate the Prisma client before
+1. Apply Prisma migrations `20261105010000_upsell_outreach` and `20261106010000_upsell_reporting_dates`, and regenerate the Prisma client before
    deploying the backend. The migration adds tables/columns without deleting existing records.
 2. Deploy backend and frontend together. Re-sync PMS guests to populate booking email/phone
    fields. Existing guest tags remain supported for conversation matching.
@@ -81,3 +94,16 @@ Tests: `npm run test:upsells`, `npm run test:upsells:database`, frontend `npm ru
 `npm run build`. The database test creates a randomly named disposable schema, runs all
 migrations and uses mocked messaging/PMS clients. It never sends guest messages or posts a
 real PMS order, and removes only its disposable schema afterwards.
+
+
+## Room preparation after an upsell
+
+Deploy migration `20261107010000_upsell_preparation`, regenerate Prisma, and deploy backend and frontend. Run a PMS sync to populate reservation-specific room assignments.
+
+Managers choose **Preparation team** (Housekeeping, Front Office, or no task) and preparation instructions in each catalogue product configuration. Existing romance, birthday and wine configurations default to Housekeeping on migration. New amenities suggest Housekeeping in the product editor; save the configuration to enable it. This is a hotel-specific product setting, allowing different packages to have different teams.
+
+A PostgreSQL trigger creates one shared task when the offer first becomes `posted`, including direct writes from the external PMS service. Acceptance still awaiting approval or uncertain posting does not create preparation work. A unique offer reference prevents retries from duplicating tasks. Creation and posting are committed together. Historical postings are not backfilled. Changes to product instructions or team apply to future tasks; existing tasks retain their original instructions and owner.
+
+The task includes the product, quantity, reservation ID, instructions and consumption time (UTC). Its room comes from that reservation's PMS assigned resource, never from a guest's other stay. Without a synced assignment the task waits, and completion is blocked. A subsequent PMS sync updates the task when the reservation's room changes, reopening even a completed task for staff to check the new room. This depends on PMS reservation sync; no room is guessed when sync is unavailable.
+
+Housekeeping can view all preparation tasks and complete Housekeeping work. Front Office and managers see the same task and completion through their task lists; Front Office has an **Upsell preparation** view including completed tasks. The manager dashboard displays open and completed preparation counts and the upsell report displays each linked task's progress. Existing dashboard polling refreshes task progress across devices. Preparation completion is operational status, not payment confirmation or room-readiness approval.

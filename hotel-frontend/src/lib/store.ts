@@ -1378,7 +1378,7 @@ export const selectors = {
   pendingRelease: (s: AppState) => s.rooms.filter((r) => r.arrivalTime && r.status !== "Clean" && r.status !== "Inspected"),
   guestRequests: (s: AppState) => s.conversations.filter((c) => c.aiStatus !== "resolved" && c.stage === "in-house"),
   acceptedUpsellTotal: (s: AppState) =>
-    s.upsells.filter((u) => u.status === "Accepted").reduce((sum, u) => sum + u.value, 0),
+    s.upsells.filter((u) => u.postingStatus === "posted").reduce((sum, u) => sum + u.value, 0),
   housekeepingStats: (s: AppState) => {
     const toClean = s.rooms.filter((r) => r.status === "Dirty").length;
     const cleaning = s.rooms.filter((r) => r.status === "Cleaning").length;

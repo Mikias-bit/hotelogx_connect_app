@@ -167,6 +167,7 @@ model Guest {
 }
 
 model Reservation {
+  assignedRoom String?
   number    String
   mewsId    String?
   hotelId   String   @default("hotel-mercier")
@@ -234,6 +235,7 @@ model Message {
 }
 
 model Task {
+  upsellOfferId String? @unique
   id             String      @id
   hotelId        String      @default("hotel-mercier")
   title          String
@@ -1000,6 +1002,8 @@ model HousekeepingPlanChange {
 }
 
 model PmsUpsellProduct {
+  preparationDepartment String?
+  preparationInstructions String @default("") @db.Text
   id String @id @default(uuid())
   hotelId String
   productId String
@@ -1075,6 +1079,8 @@ model PmsUpsellOffer {
   requestKey String @unique
   acceptedMessageId String?
   deliveryMessageId String?
+  acceptedAt DateTime?
+  postedAt DateTime?
   approvedBy String?
   approvedAt DateTime?
   approvalNote String?

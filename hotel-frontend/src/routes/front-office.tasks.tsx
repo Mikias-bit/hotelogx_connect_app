@@ -14,7 +14,7 @@ export const Route = createFileRoute("/front-office/tasks")({
   component: FrontOfficeTasks,
 });
 
-const views = ["Mine", "All open", "From guests", "Completed today"] as const;
+const views = ["Mine", "All open", "Upsell preparation", "From guests", "Completed today"] as const;
 type View = (typeof views)[number];
 
 function FrontOfficeTasks() {
@@ -24,6 +24,8 @@ function FrontOfficeTasks() {
 
   const list = useMemo(() => {
     switch (view) {
+      case "Upsell preparation":
+        return tasks.filter(t => t.source === "Upsell preparation");
       case "Mine":
         return tasks.filter(
           (t) => t.status !== "Completed" && ["Front Office", "VIP", "Billing", "Follow-up", "Guest Request"].includes(t.department),

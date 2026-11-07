@@ -5,11 +5,16 @@ import { claimOutreach, reserveStaffOffers, outreachContext } from '../modules/u
 import { createUpsellDelivery } from '../modules/upsells/upsellDelivery.js';
 import { reserveQuoteDelivery } from '../modules/upsells/upsellRecommendations.js';
 import { createUpsellPmsTriggers } from '../modules/upsells/upsellPmsTriggers.js';
+import { upsellPipeline, upsellSummary } from '../modules/upsells/upsellReporting.js';
 
 test('persistent upsell claims, cross-channel staff suppression and uncertain delivery', { skip: !process.env.UPSELL_TEST_DATABASE_URL }, async t => {
   const url = new URL(process.env.UPSELL_TEST_DATABASE_URL);
   assert.match(url.searchParams.get('schema'), /^upsells_test_[a-f0-9]{16}$/);
   const prisma = new pkg.PrismaClient({ datasources: { db: { url: url.toString() } } });
+  // Raw SQL is explicitly qualified: Prisma's schema URL qualifies ORM queries,
+  // but must never be assumed to change the PostgreSQL session search path.
+  const testSchema = url.searchParams.get('schema');
+  const executeTestSql = sql => prisma.$executeRawUnsafe(sql.replace(/"(Message|PmsUpsellOffer)"/g, (_, table) => `"${testSchema}"."${table}"`));
   const policy = { hotel: { findUnique: async () => ({ aiMode: 'Autonomous', timezone: 'Europe/Amsterdam' }) }, aiConfig: { findUnique: async () => ({ autoReply: true }) }, aiRule: { findFirst: async () => null }, emailIntegration: { findFirst: async () => ({ status: 'connected' }) } };
   policy.user = { findFirst: async () => ({ id: 'staff', hotelId: 'h', role: 'manager' }) };
   const wrap = tx => new Proxy(tx, { get: (target, key) => key in policy ? policy[key] : key === '$transaction' ? undefined : target[key] });
@@ -111,6 +116,62 @@ test('persistent upsell claims, cross-channel staff suppression and uncertain de
       await prisma.pmsUpsellOffer.create({ data: { id: 'abcdef123456', hotelId: 'h', conversationId: 'email-conv', bindingVerifiedAt: new Date(), reservationId: 'reservation', customerId: 'pms-guest', productId: 'wine', serviceId: 'service', name: 'Wine', category: 'wine', priceSource: 'pms', priceHash: 'hash', quantity: 1, unitAmount: 30, totalAmount: 30, currency: 'EUR', taxCodes: [], consumptionUtc: new Date(), requestKey: 'test', expiresAt: new Date(Date.now() + 3600000) } });
       const results = await Promise.all(['ai', 'staff'].map(id => reserveQuoteDelivery(db, 'h', 'email-conv', 'abcdef123456', id)));
       assert.equal(results.filter(Boolean).length, 1);
+    });
+    await t.test('direct PMS writes capture acceptance and first posting time without counting approval as revenue', async () => {
+      // Use the database clock for both events, matching the separate PMS service.
+      // The developer machine clock can differ from the database clock.
+      await executeTestSql(`INSERT INTO "Message" ("id", "conversationId", "author", "channel", "body", "at", "createdAt") VALUES ('accepted-message', 'email-conv', 'guest', 'email', 'ACCEPT ABCDEF123456', '10:00', clock_timestamp() AT TIME ZONE 'UTC')`);
+      const acceptedAt = (await prisma.message.findUnique({ where: { id: 'accepted-message' } })).createdAt;
+      // Matches the external Python PMS service, bypassing Prisma update helpers.
+      await executeTestSql(`UPDATE "PmsUpsellOffer" SET "status" = 'pending_approval', "acceptedMessageId" = 'accepted-message' WHERE "id" = 'abcdef123456'`);
+      let row = await prisma.pmsUpsellOffer.findUnique({ where: { id: 'abcdef123456' } });
+      assert.equal(row.acceptedAt.toISOString(), acceptedAt.toISOString()); assert.equal(row.postedAt, null);
+      let report = upsellSummary(await upsellPipeline(db, 'h'), 'Europe/Amsterdam');
+      assert.equal(report.accepted, 1); assert.equal(report.postedCount, 0);
+      const before = (await prisma.$queryRaw`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS "now"`)[0].now;
+      await executeTestSql(`UPDATE "PmsUpsellOffer" SET "status" = 'posted' WHERE "id" = 'abcdef123456'`);
+      row = await prisma.pmsUpsellOffer.findUnique({ where: { id: 'abcdef123456' } });
+      const after = (await prisma.$queryRaw`SELECT clock_timestamp() AT TIME ZONE 'UTC' AS "now"`)[0].now;
+      assert(row.postedAt >= before && row.postedAt <= after);
+      const postedAt = row.postedAt.toISOString();
+      await executeTestSql(`UPDATE "PmsUpsellOffer" SET "status" = 'posted', "updatedAt" = '2099-01-01', "postedAt" = NULL, "acceptedAt" = NULL WHERE "id" = 'abcdef123456'`);
+      row = await prisma.pmsUpsellOffer.findUnique({ where: { id: 'abcdef123456' } });
+      assert.equal(row.postedAt.toISOString(), postedAt); assert.equal(row.acceptedAt.toISOString(), acceptedAt.toISOString());
+      report = upsellSummary(await upsellPipeline(db, 'h'), 'Europe/Amsterdam', after);
+      assert.equal(report.accepted, 1); assert.equal(report.week.postedCount, 1); assert.deepEqual(report.week.totals, { EUR: 30 });
+    });
+    await t.test('preparation tasks are atomic, unique, hotel-scoped and follow the reservation room', async () => {
+      const base = await prisma.pmsUpsellOffer.findUnique({ where: { id: 'abcdef123456' } });
+      const config = { hotelId_productId: { hotelId: 'h', productId: 'wine' } };
+      await prisma.pmsUpsellProduct.update({ where: config, data: { preparationDepartment: 'Housekeeping', preparationInstructions: 'Chill wine and place flowers.' } });
+      await prisma.guest.update({ where: { id: 'pms-guest' }, data: { room: 'WRONG-STAY' } });
+      await prisma.pmsUpsellOffer.create({ data: { ...base, id: 'prep-offer', requestKey: 'prep-request', status: 'pending_approval', postedAt: null } });
+      assert.equal(await prisma.task.count({ where: { upsellOfferId: 'prep-offer' } }), 0);
+      await Promise.all([1, 2].map(() => prisma.pmsUpsellOffer.update({ where: { id: 'prep-offer' }, data: { status: 'posted' } })));
+      assert.equal(await prisma.task.count({ where: { upsellOfferId: 'prep-offer' } }), 1);
+      const task = () => prisma.task.findUnique({ where: { upsellOfferId: 'prep-offer' }, include: { trail: true } });
+      let row = await task();
+      assert.equal(row.room, null); assert.equal(row.status, 'Waiting');
+      assert.equal(row.department, 'Housekeeping'); assert.match(row.detail, /Chill wine/);
+      await assert.rejects(prisma.task.update({ where: { id: row.id }, data: { status: 'Completed' } }), /Assign a reservation room/);
+      await prisma.reservation.create({ data: { hotelId: 'foreign', number: 'R1', mewsId: 'reservation', guestId: 'pms-guest', arrival: date(3), departure: date(7), nights: 4, adults: 2, roomType: 'Double', rate: '100', assignedRoom: 'FOREIGN' } });
+      assert.equal((await task()).room, null);
+      await prisma.reservation.update({ where: { hotelId_number: { hotelId: 'h', number: 'R1' } }, data: { assignedRoom: '201' } });
+      row = await task(); assert.equal(row.room, '201'); assert.equal(row.status, 'New');
+      await prisma.task.update({ where: { id: row.id }, data: { status: 'Completed', completedAt: new Date() } });
+      assert.equal((await task()).status, 'Completed');
+      await prisma.reservation.update({ where: { hotelId_number: { hotelId: 'h', number: 'R1' } }, data: { assignedRoom: '201' } });
+      assert.equal((await task()).status, 'Completed');
+      await prisma.reservation.update({ where: { hotelId_number: { hotelId: 'h', number: 'R1' } }, data: { assignedRoom: '202' } });
+      row = await task(); assert.equal(row.room, '202'); assert.equal(row.status, 'New'); assert.equal(row.completedAt, null);
+      assert.match(row.trail.at(-1).text, /checked again/);
+      await prisma.pmsUpsellProduct.update({ where: config, data: { preparationDepartment: 'Front Office' } });
+      await prisma.pmsUpsellOffer.create({ data: { ...base, id: 'prep-fo', requestKey: 'prep-fo', status: 'posted' } });
+      assert.equal((await prisma.task.findUnique({ where: { upsellOfferId: 'prep-fo' } })).department, 'Front Office');
+      assert.equal((await task()).department, 'Housekeeping'); // Existing task keeps its owner and instructions.
+      await prisma.pmsUpsellProduct.update({ where: config, data: { preparationDepartment: null } });
+      await prisma.pmsUpsellOffer.create({ data: { ...base, id: 'prep-none', requestKey: 'prep-none', status: 'posted' } });
+      assert.equal(await prisma.task.count({ where: { upsellOfferId: 'prep-none' } }), 0);
     });
   } finally { await prisma.$disconnect(); }
 });

@@ -349,6 +349,7 @@ export function statusTone(status: string): Tone {
     case "Completed":
     case "resolved":
     case "Accepted":
+      case "Posted":
     case "Active":
     case "Paid":
       return "good";

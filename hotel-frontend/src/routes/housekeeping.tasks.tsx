@@ -12,11 +12,11 @@ export const Route = createFileRoute("/housekeeping/tasks")({
 });
 
 function HousekeepingTasks() {
-  const tasks = useApp((s) => s.tasks.filter((t) => t.department === "Housekeeping" && t.source !== "Daily report"));
+  const tasks = useApp((s) => s.tasks.filter((t) => (t.department === "Housekeeping" || t.source === "Upsell preparation") && t.source !== "Daily report"));
   const teamCleaners = useApp(selectors.housekeepingTeam);
   const [composer, setComposer] = useState(false);
   const open = tasks.filter((t) => t.status !== "Completed");
-  const unassigned = open.filter((t) => !t.assignee);
+  const unassigned = open.filter((t) => !t.assignee && t.department === "Housekeeping");
 
   return (
     <AppShell title="Housekeeping tasks">
@@ -49,7 +49,7 @@ function HousekeepingTasks() {
           ) : (
             <ul>
               {tasks.map((t) => (
-                <TaskRow showGuestFollowUp key={t.id} task={t} showDepartment={false} />
+                <TaskRow showGuestFollowUp key={t.id} task={t} showDepartment={true} />
               ))}
             </ul>
           )}

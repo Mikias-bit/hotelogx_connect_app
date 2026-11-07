@@ -6,6 +6,7 @@ import { createUpsellRouter } from '../modules/pms/pmsUpsellRoutes.js';
 test('conversation review only loads offers and bindings from the selected hotel conversation', async () => {
   const queries = [];
   const db = {
+    task: { findMany: async ({ where }) => { assert.equal(where.hotelId, 'hotel-a'); assert.deepEqual(where.upsellOfferId, { in: [] }); return []; } },
     conversation: { findFirst: async ({ where }) => {
       assert.equal(where.guest.hotelId, 'hotel-a');
       return where.id === 'conv-a' ? { id: 'conv-a' } : null;
@@ -55,5 +56,28 @@ test('staff approval is tenant-scoped, immutable, and never a raw arbitrary tool
     found = true; assert.equal((await post({ note: '' })).status, 400);
     assert.equal((await post({ note: 'Availability checked', hotelId: 'other', unitAmount: 1, name: 'charge_card' })).status, 200);
     assert.deepEqual(calls, [{ name: 'post_accepted_upsell', args: { offer_id: 'offer-a' } }]);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+
+test('only a manager can configure preparation, scoped to this hotel and a verified PMS product', async () => {
+  let role = 'front-office'; let saved;
+  const db = { pmsUpsellProduct: { upsert: async args => { saved = args; return args.create; } } };
+  const client = { callTool: async (actor, tool) => {
+    assert.equal(actor.hotelId, 'hotel-a'); assert.equal(tool, 'get_products');
+    return { structuredContent: { Products: [{ Id: 'flowers', ServiceId: 'service', IsActive: true }] } };
+  } };
+  const app = express(); app.use(express.json(), createUpsellRouter({ db, client, authenticateStaff: (req, res, next) => { req.user = { id: 'manager', hotelId: 'hotel-a', role }; next(); } }));
+  const server = app.listen(0); await new Promise(resolve => server.once('listening', resolve));
+  const put = data => fetch(`http://localhost:${server.address().port}/products/flowers`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const data = { label: 'Flowers', serviceId: 'service', category: 'romance', priceSource: 'pms', preparationDepartment: 'Front Office', preparationInstructions: 'Place flowers before arrival', hotelId: 'foreign' };
+  try {
+    assert.equal((await put(data)).status, 400); assert.equal(saved, undefined);
+    role = 'manager'; assert.equal((await put({ ...data, preparationDepartment: 'foreign' })).status, 400);
+    assert.equal((await put(data)).status, 200);
+    assert.equal(saved.create.hotelId, 'hotel-a'); assert.equal(saved.create.preparationDepartment, 'Front Office');
+    assert.equal(saved.update.preparationInstructions, data.preparationInstructions);
+    assert.equal((await put({ ...data, preparationDepartment: null })).status, 200);
+    assert.equal(saved.update.preparationDepartment, null);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });

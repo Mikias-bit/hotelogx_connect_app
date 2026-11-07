@@ -37,7 +37,7 @@ export type Department =
   | "Follow-up";
 export type TaskStatus = "Accepted" | "New" | "Assigned" | "In Progress" | "Waiting" | "Completed" | "Escalated";
 export type Priority = "Urgent" | "High" | "Normal" | "Low";
-export type TaskSource =
+export type TaskSource = "Upsell preparation"
   | "Operational change"
   | "Daily report"
   | "Guest WhatsApp"
@@ -156,6 +156,7 @@ export interface Conversation {
 }
 
 export interface Task {
+  upsellOfferId?: string;
   blockers?: OperationalBlocker[];
   carryForward?: boolean;
   carriedFrom?: string;
@@ -247,9 +248,33 @@ export interface Upsell {
   offer: string;
   value: number;
   channel: Channel;
-  status: "Accepted" | "Sent" | "Declined" | "Expired" | "Pending" | "Failed" | "Uncertain";
+  status: "Accepted" | "Posted" | "Rejected" | "Sent" | "Declined" | "Expired" | "Pending" | "Failed" | "Uncertain";
+  wasSent?: boolean;
+  guestAccepted?: boolean;
+  acceptedAt?: string | null;
+  postedAt?: string | null;
+  postingStatus?: string;
+  deliveryStatus?: string;
+  paymentStatus?: 'Not tracked';
   currency?: string;
   date: string;
+}
+
+export interface UpsellSummary {
+  timezone: string;
+  sent: number;
+  accepted: number;
+  conversion: number;
+  postedCount: number;
+  postedTotals: Record<string, number>;
+  undatedPostingCount: number;
+  week: {
+    start: string;
+    end: string;
+    postedCount: number;
+    totals: Record<string, number>;
+    days: { date: string; label: string; totals: Record<string, number> }[];
+  };
 }
 
 export interface KnowledgeDoc {
