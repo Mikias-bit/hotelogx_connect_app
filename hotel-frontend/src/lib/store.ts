@@ -1369,7 +1369,7 @@ export function channelLabel(channel: Channel | string) {
 
 export const selectors = {
   openTasks: (s: AppState) => s.tasks.filter((t) => t.status !== "Completed"),
-  escalations: (s: AppState) => s.conversations.filter((c) => c.aiStatus === "escalated" || c.guestFollowUpPending),
+  escalations: (s: AppState) => s.conversations.filter((c) => c.aiStatus === "escalated" || c.guestFollowUpPending || c.reservationRequestPending),
   openIssues: (s: AppState) => s.issues.filter((i) => i.status !== "Completed"),
   urgentIssues: (s: AppState) => s.issues.filter((i) => i.status !== "Completed" && i.priority === "Urgent"),
   roomsToClean: (s: AppState) => s.rooms.filter((r) => r.status === "Dirty"),

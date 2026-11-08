@@ -1,3 +1,4 @@
+import { captureReservationRequests } from '../pms/reservationRequests.js';
 import { prepareCatalogueReply, guardedQuote, reserveQuoteDelivery } from '../upsells/upsellRecommendations.js';
 import { createGuestTask, guestReplyNeedsReview } from '../operations/guestHandoffs.js';
 import { savePmsHandoff } from '../pms/pmsHandoff.js';
@@ -475,6 +476,9 @@ export async function processGuestMessageAI({
   // Unverified conversations must not inherit a PMS guest name/room as AI context.
   let room = extractRoomNumber(messageText, null, null) || 'not provided';
   const timeStr = getClockTime();
+
+  const serviceRequest = await captureReservationRequests(database, { hotelId: effectiveHotelId, conversationId, messageText });
+  if (serviceRequest) return serviceRequest;
 
   // A department's completion is not the guest's confirmation. Keep later guest
   // messages with Front Office instead of making another task or declaring success.

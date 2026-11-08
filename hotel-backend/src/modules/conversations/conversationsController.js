@@ -1,3 +1,4 @@
+import { assertReservationRequestsReviewed } from '../pms/reservationRequests.js';
 import { prisma } from '../../config/database.js';
 import { randomUUID } from 'node:crypto';
 import { reserveStaffOffers } from '../upsells/upsellOutreach.js';
@@ -112,6 +113,7 @@ export const getConversations = async (req, res, next) => {
 
     const pendingHandoffs = await prisma.guestHandoff.findMany({ where: { hotelId, state: { in: ['handoff', 'reopened'] } }, select: { conversationId: true } });
     const pendingIds = new Set(pendingHandoffs.map(h => h.conversationId));
+    const pendingRequests = new Set((await prisma.reservationServiceRequest.findMany({ where: { hotelId, status: 'pending' }, select: { conversationId: true } })).map(r => r.conversationId));
     const parsed = conversations.map((c) => {
       let resObj = c.guest?.reservations?.[0] || null;
       if (!resObj && allHotelReservations.length > 0) {
@@ -126,6 +128,7 @@ export const getConversations = async (req, res, next) => {
       return {
         ...c,
         guestFollowUpPending: pendingIds.has(c.id),
+        reservationRequestPending: pendingRequests.has(c.id),
         channels: c.primaryChannel ? [c.primaryChannel] : ['whatsapp'],
         knowledgeUsed: safeJsonParse(c.knowledgeUsed, []),
         upsellIdeas: safeJsonParse(c.upsellIdeas, []),
@@ -192,6 +195,7 @@ export const getConversationById = async (req, res, next) => {
 
     const parsed = {
       ...conversation,
+      reservationRequestPending: !!await prisma.reservationServiceRequest.findFirst({ where: { hotelId, conversationId: id, status: 'pending' } }),
       guestFollowUpPending: !!await prisma.guestHandoff.findFirst({ where: { hotelId, conversationId: id, state: { in: ['handoff', 'reopened'] } } }),
       channels: conversation.primaryChannel ? [conversation.primaryChannel] : ['whatsapp'],
       knowledgeUsed: safeJsonParse(conversation.knowledgeUsed, []),
@@ -403,7 +407,7 @@ export const toggleTakeover = async (req, res, next) => {
 
     const updated = await prisma.$transaction(async tx => {
       await handoffLock(tx, hotelId);
-      if (newStatus === 'ai-handling') await assertGuestHandoffsResolved(tx, hotelId, id);
+      if (newStatus === 'ai-handling') { await assertReservationRequestsReviewed(tx, hotelId, id); await assertGuestHandoffsResolved(tx, hotelId, id); }
       return tx.conversation.update({ where: { id }, data: { aiStatus: newStatus } });
     }, { timeout: 30000 });
 
@@ -494,6 +498,7 @@ export const resolveConversation = async (req, res, next) => {
 
     await prisma.$transaction(async tx => {
       await handoffLock(tx, hotelId);
+      await assertReservationRequestsReviewed(tx, hotelId, id);
       await assertGuestHandoffsResolved(tx, hotelId, id);
       return tx.conversation.update({
       where: { id },

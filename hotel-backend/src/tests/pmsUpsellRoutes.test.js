@@ -79,5 +79,12 @@ test('only a manager can configure preparation, scoped to this hotel and a verif
     assert.equal(saved.update.preparationInstructions, data.preparationInstructions);
     assert.equal((await put({ ...data, preparationDepartment: null })).status, 200);
     assert.equal(saved.update.preparationDepartment, null);
+    for (const label of ['Baby cot', 'Travel crib', 'Babybedje']) {
+      assert.equal((await put({ ...data, label, category: 'other', preparationDepartment: null })).status, 200);
+      assert.equal(saved.update.category, 'baby_cot');
+      assert.equal(saved.update.preparationDepartment, 'Housekeeping');
+    }
+    assert.equal((await put({ ...data, category: 'baby_cot', preparationDepartment: 'Front Office' })).status, 200);
+    assert.equal(saved.update.preparationDepartment, 'Housekeeping');
   } finally { await new Promise(resolve => server.close(resolve)); }
 });

@@ -3,7 +3,7 @@ import { guestWorkStatusChanged } from '../operations/guestHandoffs.js';
 import { assertNoOpenRepairs } from './housekeepingRepairs.js';
 import { readReports, allowedKinds, hash } from './reportService.js';
 import { planData, planToken, planPriority, reconcileHousekeeping } from './housekeepingPlan.js';
-export const hkLabels = { post_repair_clean: 'Post-repair cleaning / check', departure_clean_required: 'Departure clean', linen_change: 'Linen change', stayover_clean: 'Stayover clean', stayover_no_cleaning: 'No cleaning required', baby_bed_requested: 'Prepare baby bed', make_sofa_bed: 'Prepare sofa bed', late_checkout: 'Late checkout preparation', extension: 'Stay extension preparation', extension_with_room_change: 'Extension with room move', room_move: 'Room move', towels: 'Replace towels' };
+export const hkLabels = { extra_bed_requested: 'Prepare extra bed', post_repair_clean: 'Post-repair cleaning / check', departure_clean_required: 'Departure clean', linen_change: 'Linen change', stayover_clean: 'Stayover clean', stayover_no_cleaning: 'No cleaning required', baby_bed_requested: 'Prepare baby bed', make_sofa_bed: 'Prepare sofa bed', late_checkout: 'Late checkout preparation', extension: 'Stay extension preparation', extension_with_room_change: 'Extension with room move', room_move: 'Room move', towels: 'Replace towels' };
 export const failOperation = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 export const executionId = (hotelId, kind, date, key) => `rt-${hash([hotelId, kind, date, key])}`;
 export async function assertCurrentSource(tx, hotelId, rows, today) {

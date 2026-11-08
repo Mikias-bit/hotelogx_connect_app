@@ -1,3 +1,4 @@
+import { captureReservationRequests } from '../pms/reservationRequests.js';
 import { acceptCoexistence } from './WhatsAppCoexistenceService.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { verifiedConnection } from './MetaClient.js';
@@ -82,8 +83,8 @@ export class WhatsAppWebhookService {
       const hotel = await this.db.hotel.findUnique({ where: { id: hotelId } });
       const aiConfig = await this.db.aiConfig.findUnique({ where: { hotelId } });
       const canAutomate = integration.targetType !== 'internal' && conversation.aiStatus === 'ai-handling' && hotel?.aiMode === 'Autonomous' && aiConfig?.autoReply !== false && message.type === 'text';
-      let result;
-      if (canAutomate) {
+      let result = integration.targetType !== 'internal' && message.type === 'text' ? await captureReservationRequests(this.db, { hotelId, conversationId: convId, messageText: text, messageId: inboundId }) : null;
+      if (canAutomate && !result) {
         // A retry after an interrupted AI call must not run side effects a second time.
         await this.db.whatsAppReceipt.update({ where: { id }, data: { status: 'processing' } });
         result = await this.automate({ messageText: text, conversationId: convId, hotelId, channel: 'whatsapp', deferEmailDelivery: true });

@@ -8,7 +8,7 @@ import type { Task } from '@/lib/types';
 import { Badge, Button } from './ui';
 
 const field = 'w-full rounded border border-line bg-white px-3 py-2 text-sm';
-const types: Record<string, string> = { departure_clean_required: 'Departure clean', stayover_clean: 'Stayover clean', linen_change: 'Linen change', towels: 'Towels', late_checkout: 'Late checkout preparation', room_move: 'Room move', urgent_clean: 'Urgent cleaning', delivery: 'Delivery / guest preparation', public_area: 'Public-area cleaning', baby_bed_requested: 'Baby bed', make_sofa_bed: 'Sofa bed', other: 'Other' };
+const types: Record<string, string> = { departure_clean_required: 'Departure clean', stayover_clean: 'Stayover clean', linen_change: 'Linen change', towels: 'Towels', late_checkout: 'Late checkout preparation', room_move: 'Room move', urgent_clean: 'Urgent cleaning', delivery: 'Delivery / guest preparation', public_area: 'Public-area cleaning', baby_bed_requested: 'Baby bed', extra_bed_requested: 'Extra bed', make_sofa_bed: 'Sofa bed', other: 'Other' };
 
 export function HousekeepingPlanEditor({ task, date, timezone, onClose, onSaved }: { task?: Task; date: string; timezone: string; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
   const [values, setValues] = useState({ room: task?.room || '', location: task?.location || '', task: task?.planData?.task || 'urgent_clean', priority: task?.priority || 'Normal', comment: task?.planData?.comment || '', notBeforeTime: task?.planData?.notBeforeTime || '', dueTime: task?.planData?.dueTime || '' });

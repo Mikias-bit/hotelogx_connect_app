@@ -22,7 +22,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -131,6 +131,9 @@ export const api = {
   getLostFound: (query = '', page = 1) => request<LostFoundList>(`/lost-found?q=${encodeURIComponent(query)}&page=${page}`),
   createLostFound: (data: LostFoundInput) => request<LostFoundItem>('/lost-found', { method: 'POST', body: JSON.stringify(data) }),
   updateLostFound: (id: string, data: LostFoundInput & { version: number }) => request<LostFoundItem>(`/lost-found/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  getReservationRequests: (id: string) => request<any>(`/pms/requests/${encodeURIComponent(id)}`),
+  checkReservationOrigin: (id: string) => request<any>(`/pms/requests/${encodeURIComponent(id)}/origin`, { method: 'POST' }),
+  reviewReservationRequest: (id: string, data: unknown) => request<any>(`/pms/requests/${encodeURIComponent(id)}/review`, { method: 'POST', body: JSON.stringify(data) }),
   getPmsUpsells: (conversationId?: string) => request<any>(`/pms/upsells${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
   getUpsellAutomation: () => request<any>('/pms/upsells/automation'),
   saveUpsellAutomation: (data: unknown) => request<any>('/pms/upsells/automation', { method: 'PUT', body: JSON.stringify(data) }),

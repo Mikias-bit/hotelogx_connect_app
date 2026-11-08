@@ -4,7 +4,7 @@ import { authenticate } from '../../middlewares/auth.js';
 import { createPmsMcpClient } from './pmsMcpClient.js';
 import { unpackMcp } from './pmsAiTools.js';
 import { successResponse, errorResponse } from '../../utils/response.js';
-import { upsellCategories, claimOutreach } from '../upsells/upsellOutreach.js';
+import { upsellCategories, claimOutreach, isBabyCot } from '../upsells/upsellOutreach.js';
 import { defaultUpsellConfig } from '../upsells/upsellDelivery.js';
 import { catalogueIdeas } from '../upsells/upsellRecommendations.js';
 
@@ -103,10 +103,11 @@ export function createUpsellRouter({ db = prisma, client = createPmsMcpClient(),
       requireValue(b.currency === product.Price?.Currency, 'Currency must match the PMS product');
       requireValue(await db.knowledgeDoc.findFirst({ where: { id: b.knowledgeDocId, hotelId: req.user.hotelId, aiReady: true, status: 'indexed' } }), 'Select an indexed knowledge document for this hotel');
     }
-    const values = { serviceId: product.ServiceId, label: b.label.trim(), category: b.category, priceSource: b.priceSource,
+    const babyCot = isBabyCot(b.category, b.label);
+    const values = { serviceId: product.ServiceId, label: b.label.trim(), category: babyCot ? 'baby_cot' : b.category, priceSource: b.priceSource,
       unitAmount: b.priceSource === 'knowledge' ? b.unitAmount : null, currency: b.priceSource === 'knowledge' ? b.currency : null,
       knowledgeDocId: b.priceSource === 'knowledge' ? b.knowledgeDocId : null, autoPost: b.autoPost === true,
-      ...(b.preparationDepartment !== undefined ? { preparationDepartment: b.preparationDepartment } : {}),
+      ...(babyCot ? { preparationDepartment: 'Housekeeping' } : b.preparationDepartment !== undefined ? { preparationDepartment: b.preparationDepartment } : {}),
       ...(b.preparationInstructions !== undefined ? { preparationInstructions: b.preparationInstructions.trim() } : {}),
       active: b.active !== false, preArrival: b.preArrival === true, keywords: b.keywords || '', updatedBy: req.user.id };
     return db.pmsUpsellProduct.upsert({ where: { hotelId_productId: { hotelId: req.user.hotelId, productId: product.Id } },

@@ -1,3 +1,4 @@
+import { ReservationRequests } from './ReservationRequests';
 import { UpsellRecommendations } from './UpsellRecommendations';
 import { GuestHandoffList } from './GuestHandoffs';
 import { useEffect, useMemo, useState } from "react";
@@ -79,9 +80,9 @@ function matches(conversation: Conversation, filter: Filter) {
     case "Human takeover":
       return conversation.aiStatus === "human-takeover";
     case "Escalated":
-      return conversation.aiStatus === "escalated" || !!conversation.guestFollowUpPending;
+      return conversation.aiStatus === "escalated" || !!conversation.guestFollowUpPending || !!conversation.reservationRequestPending;
     case "Unresolved":
-      return conversation.aiStatus !== "resolved" || !!conversation.guestFollowUpPending;
+      return conversation.aiStatus !== "resolved" || !!conversation.guestFollowUpPending || !!conversation.reservationRequestPending;
     case "WhatsApp":
       return channels.includes("whatsapp");
     case "Email":
@@ -252,6 +253,7 @@ function GuestContext({
   return (
     <div className="space-y-5">
       <GuestHandoffList conversationId={conversation.id} />
+      <ReservationRequests key={`requests-${conversation.id}`} conversationId={conversation.id} />
       {(conversation.aiStatus === 'escalated' || conversation.aiStatus === 'human-takeover') && (
         <details className="rounded-[10px] border border-line bg-paper/70 p-3" open={conversation.escalation?.kind === 'reservation_verification' || conversation.escalation?.kind === 'pms_approval' || conversation.escalation?.kind === 'pms_review'}>
           <summary className="cursor-pointer text-[13px] font-medium">Reservation check &amp; approvals</summary>

@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-export const upsellCategories = ['other', 'breakfast', 'late_checkout', 'early_checkin', 'airport_transfer', 'romance', 'birthday', 'wine', 'parking', 'upgrade'];
+export const upsellCategories = ['other', 'baby_cot', 'breakfast', 'late_checkout', 'early_checkin', 'airport_transfer', 'romance', 'birthday', 'wine', 'parking', 'upgrade'];
+export const isBabyCot = (category, label) => category === 'baby_cot' || /\b(cots?|cribs?|baby[ -]?beds?|babybed(?:je)?s?)\b/i.test(label || '');
 const patterns = {
+  baby_cot: /\b(cots?|cribs?|baby[ -]?beds?|babybed(?:je)?s?)\b/i,
   breakfast: /\b(breakfast|buffet|ontbijt|petit déjeuner)\b/i,
   late_checkout: /\b(late check[ -]?out|leave later|late train|late flight|laat uitchecken)\b/i,
   early_checkin: /\b(early check[ -]?in|early arrival|arriv\w* early|landing early|morning arrival|vroeg inchecken)\b/i,

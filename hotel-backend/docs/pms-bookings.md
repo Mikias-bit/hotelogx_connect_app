@@ -29,7 +29,7 @@ Confirmed creation escalates the conversation to Front Office for payment follow
 
 Quotes have unique request keys. An atomic database claim prevents concurrent or repeated booking submission. A timeout, interrupted write or missing reservation response becomes `posting`/`uncertain` and is never automatically retried. Staff check Mews using the offer reference in the reservation notes. Customer creation is also treated as a write: it never overwrites or automatically links an existing customer based only on email. If that email already exists, staff must resolve the profile and complete the booking in Mews. A newly created customer ID is retained for reconciliation if reservation creation fails.
 
-The price is rechecked immediately before creation; the PMS remains authoritative during concurrent inventory/rate updates. Rate terms are manager-maintained text and must match Mews. Photo display, payment links, cancellation/amendment, extra beds and multi-room/group bookings are outside this version.
+The price is rechecked immediately before creation; the PMS remains authoritative during concurrent inventory/rate updates. Rate terms are manager-maintained text and must match Mews. Photo display, payment links, automatic cancellation/amendment and multi-room/group booking creation are outside this version. Cancellation/amendment requests and extra-bed approvals use the staff workflow documented in `reservation-requests.md`.
 
 ## Verification
 

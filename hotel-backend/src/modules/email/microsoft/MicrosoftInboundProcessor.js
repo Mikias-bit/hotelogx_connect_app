@@ -1,3 +1,4 @@
+import { captureReservationRequests } from '../../pms/reservationRequests.js';
 import { createHash } from 'node:crypto';
 
 export function microsoftMessageKey(hotelId, mailbox, providerId) {
@@ -64,9 +65,10 @@ export class MicrosoftInboundProcessor {
         const manual = receipt.suppressReply || config?.autoReply === false || ['human-takeover', 'escalated'].includes(conversation.aiStatus);
         // Automation writes and its checkpoint commit together. The existing AI
         // engine defers provider delivery so transaction retries never send mail.
-        const result = manual ? { requiresApproval: true, replyText: '', aiStatus: 'human-takeover' } : await this.automate({
+        const serviceRequest = receipt.suppressReply ? null : await captureReservationRequests(tx, { hotelId, conversationId: receipt.conversationId, messageText: message.text });
+        const result = serviceRequest || (manual ? { requiresApproval: true, replyText: '', aiStatus: conversation.aiStatus === 'escalated' ? 'escalated' : 'human-takeover' } : await this.automate({
           messageText: message.text, conversationId: receipt.conversationId, hotelId, channel: 'email', database: tx, deferEmailDelivery: true,
-        });
+        }));
         if (!result) throw new Error('Microsoft automation did not complete');
         const taskIds = JSON.parse(conversation.taskIds || '[]');
         if (result.task?.id && !taskIds.includes(result.task.id)) taskIds.push(result.task.id);

@@ -42,6 +42,26 @@ export async function reconcileHousekeeping(tx, report, existing, hotelId) {
     ids.add(id);
     const old = byId.get(id), { review, ...data } = row;
     const source = { hotelId, kind: 'housekeeping', reportDate: report.reportDate, itemKey: row.itemKey, contentHash: row.contentHash, sourceGeneratedAt: new Date(report.generatedAt) };
+    // A later engine report must not dispatch a second bed for a guest request
+    // already approved by Front Office. Preserve one work item and require a
+    // staff comparison of the report against the approved quantity/instructions.
+    const approvedBed = !old && ['extra_bed_requested', 'make_sofa_bed'].includes(data.task)
+      ? existing.find(t => t.origin === 'staff' && t.active && t.status !== 'Cancelled' && t.data?.serviceRequestId
+        && planData(t).room === data.room && ['extra_bed_requested', 'make_sofa_bed'].includes(planData(t).task)) : null;
+    if (approvedBed) {
+      if (approvedBed.data.requestReportHash !== row.contentHash) {
+        await tx.reportTask.update({ where: { id: approvedBed.id }, data: {
+          data: { ...approvedBed.data, requestReportHash: row.contentHash },
+          pendingSourceData: { ...data, serviceRequestId: approvedBed.data.serviceRequestId, reservationId: approvedBed.data.reservationId },
+          sourceReviewRequired: true, planVersion: { increment: 1 },
+          ...(approvedBed.status === 'Completed' ? { status: 'Waiting', completedAt: null, carryForward: true } : {}),
+        } });
+        await tx.reportTaskEvent.create({ data: { hotelId, taskId: approvedBed.id, actor: 'report-engine', text: 'Report bed preparation overlaps an approved guest request. Compare quantity and instructions before continuing; no duplicate task was created.' } });
+        if (approvedBed.status === 'Completed') await (await import('../operations/guestHandoffs.js')).guestWorkStatusChanged(tx, 'report', approvedBed, 'Waiting', 'report-engine');
+        await invalidateTaskRoomApprovals(tx, hotelId, [approvedBed]);
+      }
+      continue;
+    }
     if (!old) {
       const related = protectedRooms.has(data.room);
       await tx.reportTask.create({ data: { id, ...source, data, sourceReviewRequired: related, status: review?.status === 'done' ? 'Completed' : 'New' } });

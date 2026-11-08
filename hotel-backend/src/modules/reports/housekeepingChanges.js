@@ -5,7 +5,7 @@ import { syncOperations, failOperation } from './reportOperations.js';
 import { hotelTime, planData, planToken, planLocation, invalidateTaskRoomApprovals } from './housekeepingPlan.js';
 
 export const changeRoles = ['manager', 'housekeeping', 'front-office'];
-export const changeTypes = ['departure_clean_required', 'stayover_clean', 'linen_change', 'towels', 'late_checkout', 'room_move', 'urgent_clean', 'delivery', 'public_area', 'baby_bed_requested', 'make_sofa_bed', 'other'];
+export const changeTypes = ['departure_clean_required', 'stayover_clean', 'linen_change', 'towels', 'late_checkout', 'room_move', 'urgent_clean', 'delivery', 'public_area', 'baby_bed_requested', 'extra_bed_requested', 'make_sofa_bed', 'other'];
 export async function saveHousekeepingChange(db, user, id, input) {
   if (!changeRoles.includes(user.role)) failOperation('Housekeeping plan access required', 403);
   if (!input || !/^[a-zA-Z0-9-]{16,100}$/.test(input.requestKey || '') || typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 1000) failOperation('Provide a change reason and request ID');

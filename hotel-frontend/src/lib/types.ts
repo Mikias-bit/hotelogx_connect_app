@@ -133,6 +133,7 @@ export interface UpsellIdea {
 
 export interface Conversation {
   guestFollowUpPending?: boolean;
+  reservationRequestPending?: boolean;
   id: string;
   guest: Guest;
   stage: Stage;
