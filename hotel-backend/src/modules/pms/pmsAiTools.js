@@ -1,5 +1,6 @@
 import { createPmsMcpClient } from './pmsMcpClient.js';
 import { runBookingAi } from './pmsBookingAi.js';
+import { housekeepingDelivery } from '../conversations/housekeepingIntent.js';
 
 const schemas = {
   search_upsell_products: { query: 'string' },
@@ -25,6 +26,7 @@ function validate(name, args) {
 export async function runPmsAiTools({ hotelId, conversationId, messageText, history = [], knowledge = '',
   client = createPmsMcpClient(), request = fetch, env = process.env, verification, executeQuote }) {
   const context = { hotelId, conversationId };
+  if (housekeepingDelivery(messageText)) return null;
   if (/^BOOK [A-F0-9]{12}$/i.test(messageText.trim()) || !verification?.shouldVerify(messageText)) {
     const booking = await runBookingAi({ hotelId, conversationId, messageText, history, client, request, env });
     if (booking) return booking;

@@ -1148,3 +1148,25 @@ model MaintenanceConfig {
   templateName String?
   templateLanguage String @default("en_US")
 }
+
+model ShiftHandover {
+  id String @id
+  hotelId String
+  shiftDate String
+  shift String
+  targetDate String
+  targetShift String
+  title String
+  body String @db.Text
+  room String?
+  priority String @default("Normal")
+  status String @default("Open")
+  authorId String
+  authorName String
+  events Json @default("[]")
+  version Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([hotelId, shiftDate])
+  @@index([hotelId, status, targetDate])
+}

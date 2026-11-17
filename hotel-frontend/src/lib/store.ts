@@ -284,7 +284,7 @@ function appendMessage(conversationId: string, message: Omit<Message, "id">) {
   set((s) => ({
     conversations: s.conversations.map((c) =>
       c.id === conversationId
-        ? { ...c, messages: [...c.messages, { ...message, id: uid("m") }], lastAt: message.at }
+        ? { ...c, messages: [...c.messages, { ...message, createdAt: message.createdAt || new Date().toISOString(), id: uid("m") }], lastAt: message.at }
         : c,
     ),
   }));
@@ -329,7 +329,7 @@ export async function sendReply(conversationId: string, body: string, as: "ai" |
     const guestEmail = (conversation.guest as any)?.email || conversation.guest?.tags?.find(t => t.includes('@'));
     const result = await api.sendReply(conversationId, body, staffName, conversation.primaryChannel, guestEmail);
     if (!result) throw new Error('The server did not confirm this reply.');
-    const message: Message = { id: result.id, author: 'staff', channel: result.channel, at: result.at, body: result.body, staffName, deliveryStatus: result.deliveryStatus };
+    const message: Message = { id: result.id, author: 'staff', channel: result.channel, at: result.at, createdAt: result.createdAt || new Date().toISOString(), body: result.body, staffName, deliveryStatus: result.deliveryStatus };
     set(s => ({ conversations: s.conversations.map(c => c.id === conversationId ? {
       ...c, messages: c.messages.some(m => m.id === message.id) ? c.messages : [...c.messages, message],
       unread: 0, aiStatus: 'human-takeover', suggestedReply: '', lastAt: result.at,
@@ -382,10 +382,17 @@ export async function resolveConversation(conversationId: string) {
   } catch (error) { toast('Conversation remains open', 'urgent', error instanceof Error ? error.message : 'Unable to close'); }
 }
 
-export function markRead(conversationId: string) {
-  set((s) => ({
-    conversations: s.conversations.map((c) => (c.id === conversationId ? { ...c, unread: 0 } : c)),
-  }));
+export async function markRead(conversationId: string) {
+  const conversation = store.state.conversations.find(c => c.id === conversationId);
+  const messages = [...(conversation?.messages || [])].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || !conversation?.unread) return;
+  try {
+    const result = await api.markConversationRead(conversationId, lastMessage.id);
+    if (!result) return;
+    set(s => ({ conversations: s.conversations.map(c => c.id === conversationId
+      ? { ...c, unread: Math.max(result.unread, c.unread - conversation.unread) } : c) }));
+  } catch { /* Keep the unread indicator if the server could not save it. */ }
 }
 
 /* ----------------------------------------------------------------- tasks -- */
@@ -417,7 +424,7 @@ export async function createTask(input: {
     guest: serverTask.guest ?? input.guest,
     department: (serverTask.department ?? input.department) as Department,
     priority: (serverTask.priority ?? input.priority) as Priority,
-    createdAt: serverTask.createdAt ?? clockNow(),
+    createdAt: serverTask.createdAt ?? new Date().toISOString(),
     due: serverTask.due ?? input.due,
     assignee: serverTask.assignee ?? input.assignee,
     status: (serverTask.status ?? (input.assignee ? "Assigned" : "New")) as TaskStatus,

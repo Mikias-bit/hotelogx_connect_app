@@ -1,3 +1,4 @@
+import { timestamp } from '@/lib/timeline';
 import { GuestHandoffList } from '@/components/GuestHandoffs';
 import { HousekeepingPlanButton } from '@/components/HousekeepingPlan';
 import { useMemo, useState } from "react";
@@ -40,7 +41,7 @@ function ManagerTasks() {
         const byDepartment = department === "All" || t.department === department;
         const byStatus = status === "Open" ? t.status !== "Completed" : t.status === status;
         return byDepartment && byStatus;
-      }),
+      }).sort((a, b) => timestamp(b.completedAt || b.createdAt) - timestamp(a.completedAt || a.createdAt)),
     [tasks, department, status],
   );
 
@@ -50,7 +51,7 @@ function ManagerTasks() {
   const fromAi = tasks.filter((t) => t.source === "AI Detection" || t.source === "PMS event");
 
   return (
-    <AppShell title="Everything the hotel owes a guest today" wide>
+    <AppShell title="Tasks across every department" wide>
       <div className="space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>

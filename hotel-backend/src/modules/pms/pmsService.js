@@ -468,7 +468,7 @@ export const pmsService = {
               title: `${cleaningType} clean — Room ${roomNumber}`,
               room: roomNumber,
               priority: vip ? 'High' : 'Normal',
-              createdAt: timeStr,
+              createdAt: new Date().toISOString(),
               status: assignedCleaner ? 'Assigned' : 'Open',
               source: 'PMS event',
               assignee: assignedCleaner || null,

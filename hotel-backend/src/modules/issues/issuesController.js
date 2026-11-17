@@ -117,7 +117,7 @@ export const createIssue = async (req, res, next) => {
           priority,
           reportedBy: reporter,
           via,
-          createdAt: at,
+          createdAt: new Date().toISOString(),
           assignee: null,
           status: 'Reported',
           outOfService: isOos,

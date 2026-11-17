@@ -92,3 +92,16 @@ node scripts/configure-whatsapp-coexistence.mjs --app-id=1018045903953347 --appl
 ```
 
 The script preserves the callback and existing subscribed fields, keeps credentials in memory, and verifies Meta's resulting subscription. Deploy the backend before enabling the new fields. WhatsApp webhook bodies accept up to 10 MB; other API request limits are unchanged.
+
+
+### Replies during escalations and routine housekeeping
+
+In Autonomous mode with auto replies enabled, a new text message in an escalated guest conversation receives a fixed receipt acknowledgment. The escalation stays open; no model tools, new task, charge, approval or completion are triggered by that acknowledgment. Staff takeover and disabled auto replies still suppress it. Durable message receipts prevent duplicate acknowledgment delivery and ambiguous sends remain unretried.
+
+Ordinary requests for extra duvets, pillows, towels and bedding take precedence over generic paid-extra keywords and older upsell prompts. Known item typos such as `duve` and `pilow` are recognized without changing room numbers. Missing or unknown room numbers receive clarification before task creation; `2008` is never silently changed to `208`. Housekeeping replies describe a recorded request, not an unverified dispatch or delivery promise.
+
+A new incoming message reopens a resolved conversation; duplicate deliveries do not reopen closed work. Deploy the backend to enable these changes. No schema or frontend change is required.
+
+While an escalation remains open, general hotel-information questions (for example breakfast hours and published prices) can receive a read-only answer grounded in that hotel's knowledge documents. This respects Hotel information approval rules and does not run booking/task tools or resolve the staff handoff. Mixed action requests, unavailable generation, and unsupported questions retain the review acknowledgment. Missing facts must be identified rather than guessed. Human takeover and disabled auto replies still suppress automatic messages.
+
+Information questions now run before the general PMS upsell and department-follow-up paths. Public answers use hotel knowledge; personal reservation questions additionally require a valid conversation binding and the read-only get_my_reservation PMS tool. Missing or unverified reservation information, incomplete answers, and retrieval/generation failures create an information_missing Front Office escalation when the conversation is AI-handled. Existing escalations remain intact. Known partial answers can accompany the handoff. Explicit human takeover, hotel approval rules and disabled automatic replies remain respected. Hardcoded breakfast, Wi-Fi, pet and check-in fallback claims have been removed.

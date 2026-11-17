@@ -1,3 +1,4 @@
+import type { ShiftHandover, HandoverInput } from './shiftHandover';
 import type { GuestHandoff } from './useGuestHandoffs';
 import type { OperationalBlocker } from '@/components/OperationalBlockers';
 import type { ReadyRoom } from './useReadiness';
@@ -22,7 +23,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -225,6 +226,10 @@ export const api = {
 
 
   // Conversations / Chat
+  markConversationRead: (id: string, lastMessageId: string) => request<{ unread: number }>(`/conversations/${id}/read`, { method: 'POST', body: JSON.stringify({ lastMessageId }) }),
+  getShiftHandovers: (date: string) => request<ShiftHandover[]>(`/shift-handovers?date=${encodeURIComponent(date)}`),
+  createShiftHandover: (input: HandoverInput) => request<ShiftHandover>('/shift-handovers', { method: 'POST', body: JSON.stringify(input) }),
+  updateShiftHandover: (id: string, input: { version: number; action: string; note: string }) => request<{ id: string }>(`/shift-handovers/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   getConversations: () => request<any[]>('/conversations'),
   getConversationById: (id: string) => request<any>(`/conversations/${id}`),
   sendReply: (id: string, body: string, staffName?: string, channel?: string, toEmail?: string) =>

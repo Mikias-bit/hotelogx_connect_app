@@ -76,8 +76,8 @@ function webhookFixture(sendResult = { success: true, messageId: 'out' }) {
     whatsAppIntegration: { findFirst: async ({ where }) => where.phoneNumberId === '123' && where.wabaId === '456' ? row : null, update: async () => {} },
     whatsAppReceipt: { upsert: async ({ where, create }) => { if (!receipts.has(where.id)) receipts.set(where.id, { ...create, status: 'pending' }); return { ...receipts.get(where.id) }; }, update: async ({ where, data }) => { receipts.set(where.id, { ...receipts.get(where.id), ...data }); return { ...receipts.get(where.id) }; } },
     guest: { upsert: async () => ({}) },
-    conversation: { upsert: async () => ({ aiStatus: 'ai-handling' }), update: async ({ data }) => { if (data.unread) unread++; } },
-    message: { findUnique: async ({ where }) => messages.get(where.id), create: async ({ data }) => messages.set(data.id, data), update: async () => {} },
+    conversation: { findUnique: async () => ({ aiStatus: 'ai-handling' }), upsert: async () => ({ aiStatus: 'ai-handling' }), update: async ({ data }) => { if (data.unread) unread++; } },
+    message: { upsert: async ({ where, create }) => { if (!messages.has(where.id)) messages.set(where.id, create); return messages.get(where.id); }, findUnique: async ({ where }) => messages.get(where.id), create: async ({ data }) => messages.set(data.id, data), update: async () => {} },
     hotel: { findUnique: async () => ({ aiMode: 'Autonomous' }) }, aiConfig: { findUnique: async () => ({ autoReply: true }) },
     $transaction: async ops => Promise.all(ops),
   };
@@ -111,7 +111,7 @@ test('Front Office handoff sends its acknowledgment once, then pauses subsequent
   f.db.conversation.update = async ({ data }) => { if (data.aiStatus) state = data.aiStatus; };
   f.service.automate = async () => { calls++; return { aiStatus: 'escalated', replyText: 'A member of our Front Office team will help you.', requiresApproval: false }; };
   await f.service.accept(f.payload); await f.service.accept(f.payload);
-  assert.equal(state, 'escalated'); assert.equal(calls, 1); assert.equal(f.counts().sends, 1);
+  assert.equal(state, 'escalated'); assert.equal(calls, 1); assert.equal(f.counts().sends, 2);
 });
 test('known rejected send retries without rerunning AI or duplicating inbound messages', async () => {
   const f = webhookFixture({ success: false, uncertain: false, error: 'Rejected' });
@@ -192,4 +192,91 @@ test('Coexistence cannot connect without echo and history webhook subscriptions'
   f.service.request = (path, token, options) => path === '123' ? { is_on_biz_app: true, platform_type: 'CLOUD_API' } : path === '789/subscriptions' ? { data: [] } : original(path, token, options);
   await assert.rejects(f.service.connect({ hotelId: 'hotel-a', code: 'code', phoneNumberId: '123', wabaId: '456', onboardingMode: 'coexistence' }), /webhook subscriptions/);
   assert.equal(f.writes.length, 0);
+});
+
+
+test('a new WhatsApp message reopens a resolved conversation and replies exactly once', async () => {
+  const f = webhookFixture(); let state = 'resolved', cleared = false;
+  f.db.conversation.upsert = async () => ({ aiStatus: state });
+  f.db.conversation.updateMany = async ({ where, data }) => {
+    assert.equal(where.guest.hotelId, 'hotel-a'); assert.equal(where.aiStatus, 'resolved');
+    if (state !== 'resolved') return { count: 0 };
+    state = data.aiStatus; cleared = data.escalation === null; return { count: 1 };
+  };
+  await f.service.accept(f.payload);
+  assert.equal(state, 'ai-handling'); assert.equal(cleared, true);
+  assert.equal(f.counts().sends, 2);
+  state = 'resolved';
+  await f.service.accept(f.payload);
+  assert.equal(state, 'resolved'); assert.equal(f.counts().sends, 2);
+});
+
+test('a concurrent staff takeover wins over reopening a resolved WhatsApp conversation', async () => {
+  const f = webhookFixture();
+  f.db.conversation.upsert = async () => ({ aiStatus: 'resolved' });
+  f.db.conversation.updateMany = async () => ({ count: 0 });
+  f.db.conversation.findUnique = async () => ({ aiStatus: 'human-takeover' });
+  await f.service.accept(f.payload);
+  assert.equal(f.counts().sends, 0); assert.equal(f.counts().automations, 0);
+});
+
+test('reopening a resolved conversation still respects disabled hotel auto replies', async () => {
+  const f = webhookFixture();
+  f.db.conversation.upsert = async () => ({ aiStatus: 'resolved' });
+  f.db.conversation.updateMany = async () => ({ count: 1 });
+  f.db.aiConfig.findUnique = async () => ({ autoReply: false });
+  await f.service.accept(f.payload);
+  assert.equal(f.counts().automations, 0); assert.equal(f.counts().sends, 0);
+});
+
+
+test('escalated breakfast questions receive information once while the staff handoff stays open', async () => {
+  const f = webhookFixture(); let state = 'escalated', reads = 0; const sent = [];
+  f.payload.entry[0].changes[0].value.messages = [f.payload.entry[0].changes[0].value.messages[0]];
+  f.payload.entry[0].changes[0].value.messages[0].text.body = 'What time does breakfast end? How much per person';
+  f.db.conversation.upsert = async () => ({ aiStatus: state });
+  f.db.conversation.findUnique = async () => ({ aiStatus: state });
+  f.db.conversation.update = async ({ data }) => { assert.equal(data.escalation, undefined); if (data.aiStatus) state = data.aiStatus; };
+  f.service.answerInformation = async ({ hotelId }) => { assert.equal(hotelId, 'hotel-a'); reads++; return 'Breakfast ends at 10. The price is not listed.'; };
+  f.service.send = async args => { sent.push(args.text); return { success: true, messageId: 'info-1' }; };
+  await f.service.accept(f.payload); await f.service.accept(f.payload);
+  assert.equal(state, 'escalated'); assert.equal(f.counts().automations, 0);
+  assert.equal(reads, 1); assert.deepEqual(sent, ['Breakfast ends at 10. The price is not listed.']);
+});
+
+test('an information handoff reply can retry a rejected send without rerunning the agent', async () => {
+  const f = webhookFixture({ success: false, uncertain: false, error: 'Rejected' });
+  f.payload.entry[0].changes[0].value.messages = [f.payload.entry[0].changes[0].value.messages[0]];
+  let calls = 0;
+  f.service.automate = async () => { calls++; return { type: 'hotel_information', aiStatus: 'escalated', replyText: 'Front Office will check the missing price.', message: { id: 'm-info-test' } }; };
+  await assert.rejects(f.service.accept(f.payload), /retry/);
+  f.db.conversation.upsert = async () => ({ aiStatus: 'escalated' });
+  f.db.conversation.findUnique = async () => ({ aiStatus: 'escalated' });
+  f.service.send = async () => ({ success: true, messageId: 'info-retry' });
+  await f.service.accept(f.payload);
+  assert.equal(calls, 1); assert.equal(f.receipts.get('123:in-1').status, 'done');
+});
+
+test('open escalations acknowledge new messages without AI tools, duplicate replies or closing the escalation', async () => {
+  const f = webhookFixture(); let state = 'escalated'; const sent = [];
+  f.db.conversation.upsert = async () => ({ aiStatus: state });
+  f.db.conversation.findUnique = async () => ({ aiStatus: state });
+  f.db.conversation.update = async ({ data }) => { if (data.aiStatus) state = data.aiStatus; };
+  f.service.send = async args => { sent.push(args.text); return { success: true, messageId: `ack-${sent.length}` }; };
+  f.payload.entry[0].changes[0].value.messages[0].text.body = 'I want duve extra for room 2008';
+  await f.service.accept(f.payload); await f.service.accept(f.payload);
+  assert.equal(state, 'escalated'); assert.equal(f.counts().automations, 0); assert.equal(sent.length, 2);
+  assert.match(sent[0], /housekeeping request/); assert.match(sent[0], /Front Office/);
+  assert.doesNotMatch(sent[0], /dispatched|on the way|confirmed|price|quantity/);
+});
+
+test('escalation acknowledgments respect disabled auto replies and a concurrent staff takeover', async () => {
+  for (const disabled of [true, false]) {
+    const f = webhookFixture();
+    f.db.conversation.upsert = async () => ({ aiStatus: 'escalated' });
+    f.db.conversation.findUnique = async () => ({ aiStatus: 'human-takeover' });
+    f.db.aiConfig.findUnique = async () => ({ autoReply: !disabled });
+    await f.service.accept(f.payload);
+    assert.equal(f.counts().sends, 0); assert.equal(f.counts().automations, 0);
+  }
 });

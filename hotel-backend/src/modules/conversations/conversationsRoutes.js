@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/auth.js';
 import {
+  markConversationRead,
   getConversations,
   getConversationById,
   sendReply,
@@ -15,6 +16,7 @@ router.use(authenticate);
 
 router.get('/', getConversations);
 router.get('/:id', getConversationById);
+router.post('/:id/read', markConversationRead);
 router.post('/:id/reply', sendReply);
 router.post('/:id/message', receiveGuestMessage);
 router.post('/:id/takeover', toggleTakeover);

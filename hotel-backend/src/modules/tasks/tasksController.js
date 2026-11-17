@@ -96,7 +96,7 @@ export const createTask = async (req, res, next) => {
         guest,
         department,
         priority: normalizedPriority,
-        createdAt: timeStr,
+        createdAt: new Date().toISOString(),
         due,
         assignee,
         status: assignee ? 'Assigned' : 'New',
@@ -179,7 +179,7 @@ export const updateTaskStatus = async (req, res, next) => {
       data: {
         version: { increment: 1 },
         status: status || existing.status,
-        ...(status === 'Completed' ? { completedAt: now } : status ? { completedAt: null } : {}),
+        ...(status === 'Completed' ? { completedAt: fresh.status === 'Completed' ? fresh.completedAt : now } : status ? { completedAt: null } : {}),
         assignee: assignee !== undefined ? assignee : existing.assignee,
         trail: {
           create: {

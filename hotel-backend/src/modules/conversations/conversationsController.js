@@ -96,10 +96,10 @@ export const getConversations = async (req, res, next) => {
           include: { reservations: true },
         },
         messages: {
-          orderBy: { at: 'asc' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         },
       },
-      orderBy: { lastAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
     });
 
     const allHotelReservations = await prisma.reservation.findMany({
@@ -167,7 +167,7 @@ export const getConversationById = async (req, res, next) => {
           include: { reservations: true },
         },
         messages: {
-          orderBy: { at: 'asc' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         },
       },
     });
@@ -597,3 +597,24 @@ export const receiveGuestMessage = async (req, res, next) => {
   }
 };
 
+
+// Mark only messages actually loaded by the operator as read. Concurrent arrivals stay unread.
+export const markConversationRead = async (req, res, next) => {
+  try {
+    const hotelId = req.user?.hotelId;
+    if (!hotelId) return errorResponse(res, 'Hotel context required', 401);
+    const { lastMessageId } = req.body;
+    if (typeof lastMessageId !== 'string') return errorResponse(res, 'Last message required', 400);
+    const unread = await prisma.$transaction(async tx => {
+      const conversation = await tx.conversation.findFirst({ where: { id: req.params.id, guest: { hotelId } } });
+      if (!conversation) throw Object.assign(new Error('Conversation not found'), { status: 404 });
+      const message = await tx.message.findFirst({ where: { id: lastMessageId, conversationId: conversation.id } });
+      if (!message) throw Object.assign(new Error('Message not found'), { status: 404 });
+      const remaining = await tx.message.count({ where: { conversationId: conversation.id, author: 'guest', id: { not: message.id }, createdAt: { gte: message.createdAt } } });
+      const count = Math.min(conversation.unread, remaining);
+      const saved = await tx.conversation.updateMany({ where: { id: conversation.id, unread: conversation.unread }, data: { unread: count } });
+      return saved.count ? count : conversation.unread;
+    });
+    return successResponse(res, { unread });
+  } catch (error) { next(error); }
+};

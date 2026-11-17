@@ -1,3 +1,4 @@
+import { escalationAcknowledgment } from '../conversations/housekeepingIntent.js';
 import { captureReservationRequests } from '../pms/reservationRequests.js';
 import { acceptCoexistence } from './WhatsAppCoexistenceService.js';
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -8,7 +9,7 @@ export function verifyMetaSignature(rawBody, signature, secret) {
   return timingSafeEqual(expected, Buffer.from(signature.slice(7), 'hex'));
 }
 export class WhatsAppWebhookService {
-  constructor({ db, withLock, automate, send, broadcast, handleOperations }) { Object.assign(this, { db, withLock, automate, send, broadcast, handleOperations }); }
+  constructor({ db, withLock, automate, send, broadcast, handleOperations, answerInformation }) { Object.assign(this, { db, withLock, automate, send, broadcast, handleOperations, answerInformation }); }
   async accept(body) {
     if (body?.object !== 'whatsapp_business_account' || !Array.isArray(body.entry)) throw Object.assign(new Error('Invalid Meta payload'), { status: 400 });
     for (const entry of body.entry) for (const change of [...(entry.changes || [])].sort((a, b) => Number(b.field === 'smb_message_echoes') - Number(a.field === 'smb_message_echoes'))) {
@@ -69,7 +70,7 @@ export class WhatsAppWebhookService {
     const guestId = `g-wa-${hotelId}-${message.from}`;
     const convId = `conv-wa-${hotelId}-${message.from}`;
     // Never infer reservations, occupied rooms, or operational actions from an unverified sender.
-    await this.db.guest.upsert({ where: { id: guestId }, create: { id: guestId, hotelId, name, country: '', language: 'en', vip: false, previousStays: 0, tags: JSON.stringify(['WhatsApp Contact', `+${message.from}`]) }, update: {} });
+    const guest = await this.db.guest.upsert({ where: { id: guestId }, create: { id: guestId, hotelId, name, country: '', language: 'en', vip: false, previousStays: 0, tags: JSON.stringify(['WhatsApp Contact', `+${message.from}`]) }, update: {} });
     let conversation = await this.db.conversation.upsert({ where: { id: convId }, create: { id: convId, guestId, stage: 'Pre-arrival', primaryChannel: 'whatsapp', aiStatus: integration.targetType === 'internal' || integration.onboardingMode === 'coexistence' ? 'human-takeover' : 'ai-handling', sentiment: 'neutral', subject: `WhatsApp: ${name}`, summary: text.slice(0, 200), suggestedReply: '', unread: 0, lastAt: at, aiHandledCount: 0 }, update: {} });
     const inboundId = `m-wa-${message.id}`;
     const exists = await this.db.message.findUnique({ where: { id: inboundId } });
@@ -78,6 +79,18 @@ export class WhatsAppWebhookService {
         this.db.message.create({ data: { id: inboundId, conversationId: convId, author: 'guest', channel: 'whatsapp', body: text, at } }),
         this.db.conversation.update({ where: { id: convId }, data: { unread: { increment: 1 }, lastAt: at } }),
       ]);
+      // A resolved conversation is closed work, not a permanent opt-out from AI.
+      // Reopen only for a newly persisted inbound message; never override an
+      // active staff takeover/escalation or replay a previously handled receipt.
+      if (conversation.aiStatus === 'resolved' && receipt.status === 'pending') {
+        const reopened = await this.db.conversation.updateMany({
+          where: { id: convId, guest: { hotelId }, aiStatus: 'resolved' },
+          data: { aiStatus: 'ai-handling', escalation: null },
+        });
+        conversation = reopened.count === 1
+          ? { ...conversation, aiStatus: 'ai-handling', escalation: null }
+          : await this.db.conversation.findUnique({ where: { id: convId } });
+      }
     }
     if (receipt.status === 'pending') {
       const hotel = await this.db.hotel.findUnique({ where: { id: hotelId } });
@@ -90,16 +103,31 @@ export class WhatsAppWebhookService {
         result = await this.automate({ messageText: text, conversationId: convId, hotelId, channel: 'whatsapp', deferEmailDelivery: true });
       }
       await assertOwned();
-      const reply = result?.replyText && !result.requiresApproval && !result.escalation ? result.replyText : null;
-      receipt = await this.db.whatsAppReceipt.update({ where: { id }, data: { status: reply ? 'ready' : 'done', replyText: reply, replyMessageId: result?.message?.id || null } });
-      await this.db.conversation.update({ where: { id: convId }, data: { suggestedReply: result?.replyText || '', ...(result?.aiStatus ? { aiStatus: result.aiStatus } : {}) } });
+      let reply = result?.replyText && !result.requiresApproval && !result.escalation ? result.replyText : null;
+      let replyMessageId = result?.message?.id || null;
+      // Acknowledge receipt without running tools or resolving the staff handoff.
+      if (!reply && hotel?.aiMode === 'Autonomous' && aiConfig?.autoReply !== false
+        && message.type === 'text' && ['ai-handling', 'escalated'].includes(conversation.aiStatus)
+        && (result?.aiStatus || conversation.aiStatus) === 'escalated') {
+        // This callback is read-only: it must not invoke the task/PMS agent.
+        reply = !result && this.answerInformation
+          ? await this.answerInformation({ hotelId, conversationId: convId, messageText: text, guest }).catch(() => null)
+          : null;
+        reply ||= escalationAcknowledgment(text);
+        replyMessageId = `m-wa-ack-${message.id}`;
+        await this.db.message.upsert({ where: { id: replyMessageId }, create: { id: replyMessageId, conversationId: convId, author: 'ai', channel: 'whatsapp', body: reply, at, deliveryStatus: 'pending' }, update: {} });
+      }
+      receipt = await this.db.whatsAppReceipt.update({ where: { id }, data: { status: reply ? 'ready' : 'done', replyText: reply, replyMessageId } });
+      await this.db.conversation.update({ where: { id: convId }, data: { ...(result?.replyText ? { suggestedReply: result.replyText } : {}), ...(result?.escalation ? { escalation: JSON.stringify(result.escalation) } : {}), ...(result?.aiStatus ? { aiStatus: result.aiStatus } : {}) } });
     } else if (receipt.status === 'processing') {
       await this.db.whatsAppReceipt.update({ where: { id }, data: { status: 'uncertain', lastError: 'AI processing interrupted; review conversation before replying' } });
       await this.db.conversation.update({ where: { id: convId }, data: { aiStatus: 'human-takeover' } });
       return;
     }
     if (receipt.status === 'ready') {
-      if (conversation.aiStatus !== 'ai-handling') {
+      const acknowledgment = receipt.replyMessageId?.startsWith('m-wa-ack-') || receipt.replyMessageId?.startsWith('m-info-');
+      const current = acknowledgment ? await this.db.conversation.findUnique({ where: { id: convId } }) : conversation;
+      if (current?.aiStatus !== 'ai-handling' && !(acknowledgment && current?.aiStatus === 'escalated')) {
         await this.db.whatsAppReceipt.update({ where: { id }, data: { status: 'done', replyText: null, lastError: 'Reply cancelled after human takeover' } });
         return;
       }

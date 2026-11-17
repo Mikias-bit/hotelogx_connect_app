@@ -1,7 +1,7 @@
 import { prisma } from '../../config/database.js';
 import { errorResponse, successResponse } from '../../utils/response.js';
 import { realtimeService } from '../../services/realtimeService.js';
-import { processGuestMessageAI } from '../conversations/aiService.js';
+import { processGuestMessageAI, answerGuestInformation } from '../conversations/aiService.js';
 import { whatsappConnections } from './whatsappOAuth.js';
 import { createMetaClient } from './MetaClient.js';
 import { WhatsAppMessagingService } from './WhatsAppMessagingService.js';
@@ -12,6 +12,7 @@ import { maintenanceOperations } from '../maintenance/runtime.js';
 import { createWorkerOperationsHandler } from './workerNavigation.js';
 const messaging = new WhatsAppMessagingService({ db: prisma, request: createMetaClient() });
 const webhook = new WhatsAppWebhookService({ db: prisma, withLock: withGmailMailboxLock, automate: processGuestMessageAI,
+ answerInformation: answerGuestInformation,
  handleOperations: createWorkerOperationsHandler({ db: prisma, maintenance: maintenanceOperations, housekeeping: housekeepingOperations }),
  send: options => messaging.send(options), broadcast: (...args) => realtimeService.broadcastToHotel(...args) });
 export const sanitizePhoneNumber = phone => String(phone || '').replace(/\D/g, '');

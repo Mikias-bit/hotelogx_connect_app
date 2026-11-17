@@ -119,7 +119,7 @@ export async function updateReportTask(db, user, id, input) {
     if (row.kind === 'housekeeping' && row.status === 'Completed') failOperation('Completed work is retained. Add a new follow-up task instead.', 409);
     const changed = await tx.reportTask.updateMany({ where: { id, hotelId: user.hotelId, active: true, contentHash: row.contentHash, planVersion: row.planVersion, updatedAt: row.updatedAt }, data: { status: input.status, ...(row.kind === 'housekeeping' && input.status === 'Completed' ? { carryForward: false } : row.kind === 'housekeeping' && ['Waiting', 'Escalated'].includes(input.status) ? { carryForward: true } : {}),
       ...(input.status === 'New' ? { assignmentId: null, assignedWorkerId: null, assignedAt: null, acceptedAt: null, startedAt: null, problemType: null, problemNote: null } : {}),
-      ...(input.status === 'In Progress' && !row.startedAt ? { startedAt: new Date() } : {}), completedAt: input.status === 'Completed' ? new Date() : null } });
+      ...(input.status === 'In Progress' && !row.startedAt ? { startedAt: new Date() } : {}), completedAt: input.status === 'Completed' ? (row.status === 'Completed' ? row.completedAt : new Date()) : null } });
     if (changed.count !== 1) failOperation('Task changed; refresh first', 409);
     await guestWorkStatusChanged(tx, 'report', row, input.status, user.id);
     await tx.reportTaskEvent.create({ data: { hotelId: user.hotelId, taskId: id, actor: user.id, text: String(input.note || `Marked ${input.status}`).slice(0, 2000) } });

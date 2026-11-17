@@ -103,6 +103,7 @@ export interface Guest {
 }
 
 export interface Message {
+  createdAt?: string;
   deliveryStatus?: string;
   id: string;
   author: "guest" | "ai" | "staff" | "system";

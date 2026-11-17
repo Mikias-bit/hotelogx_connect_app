@@ -1,3 +1,4 @@
+import { completedToday } from '@/lib/timeline';
 import { GuestHandoffList } from '@/components/GuestHandoffs';
 import { HousekeepingPlanButton } from '@/components/HousekeepingPlan';
 import { useMemo, useState } from "react";
@@ -14,11 +15,12 @@ export const Route = createFileRoute("/front-office/tasks")({
   component: FrontOfficeTasks,
 });
 
-const views = ["Mine", "All open", "Upsell preparation", "From guests", "Completed today"] as const;
+const views = ["Mine", "All open", "Upsell preparation", "From guests", "Completed today", "All completed"] as const;
 type View = (typeof views)[number];
 
 function FrontOfficeTasks() {
   const tasks = useApp((s) => s.tasks);
+  const timezone = useApp(s => s.hotelProfile.timezone);
   const [view, setView] = useState<View>("Mine");
   const [composer, setComposer] = useState(false);
 
@@ -35,9 +37,11 @@ function FrontOfficeTasks() {
       case "From guests":
         return tasks.filter((t) => t.source === "Guest WhatsApp" || t.source === "Guest Email");
       case "Completed today":
-        return tasks.filter((t) => t.status === "Completed");
+        return tasks.filter(t => completedToday(t, timezone));
+      case "All completed":
+        return tasks.filter(t => t.status === "Completed").sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
     }
-  }, [tasks, view]);
+  }, [tasks, view, timezone]);
 
   const updatesBack = tasks
     .filter((t) => t.trail.some((entry) => entry.via === "whatsapp") && (t.department === "Housekeeping" || t.department === "Maintenance"))
@@ -65,7 +69,7 @@ function FrontOfficeTasks() {
           <StatCard label="Open for the desk" value={tasks.filter((t) => t.status !== "Completed" && t.department === "Front Office").length} tone="attend" delay={0} />
           <StatCard label="VIP preparation" value={tasks.filter((t) => t.department === "VIP" && t.status !== "Completed").length} tone="pine" delay={40} />
           <StatCard label="Waiting on someone else" value={tasks.filter((t) => t.status === "Waiting").length} tone="mute" delay={80} />
-          <StatCard label="Completed today" value={tasks.filter((t) => t.status === "Completed").length} icon={CheckCircle2} tone="good" delay={120} />
+          <StatCard label="Completed today" value={tasks.filter(t => completedToday(t, timezone)).length} icon={CheckCircle2} tone="good" delay={120} />
         </div>
 
         <div className="flex gap-1.5 overflow-x-auto pb-0.5">

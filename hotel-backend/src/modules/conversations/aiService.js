@@ -1,3 +1,7 @@
+import { createHotelInformationAnswerer } from './hotelInformation.js';
+import { createPmsMcpClient } from '../pms/pmsMcpClient.js';
+import { unpackMcp } from '../pms/pmsAiTools.js';
+import { housekeepingDelivery, housekeepingRoomQuestion } from './housekeepingIntent.js';
 import { captureReservationRequests } from '../pms/reservationRequests.js';
 import { prepareCatalogueReply, guardedQuote, reserveQuoteDelivery } from '../upsells/upsellRecommendations.js';
 import { createGuestTask, guestReplyNeedsReview } from '../operations/guestHandoffs.js';
@@ -442,6 +446,30 @@ function dispatchOutboundEmail({ channel, conversation, guest, hotelId, conversa
   }
 }
 
+export async function answerGuestInformation(args, database = prisma) {
+  return createHotelInformationAnswerer({
+    retrieve: retrieveRelevantKnowledge, generate: generateWithGemini,
+    policy: input => evaluateAiPolicy({ ...input, database }),
+    reservation: async context => {
+      // Never use an unverified CRM reservation or a guest-supplied reservation ID.
+      if (!await guestVerification.validBinding(context)) return null;
+      const result = unpackMcp(await createPmsMcpClient().callConversationTool(context, 'get_my_reservation', {}));
+      if (result.status === 'staff_check' || result.reply_text || result.replyText) return null;
+      return result;
+    },
+    onMissing: async context => {
+      // Keep an existing handoff intact; the new inbound question is already visible.
+      await database.conversation.updateMany({ where: { id: context.conversationId,
+        guest: { hotelId: context.hotelId }, aiStatus: 'ai-handling' }, data: {
+        aiStatus: 'escalated', escalation: JSON.stringify({ kind: 'information_missing',
+          department: 'Front Office', urgency: 'Normal', raisedAt: getClockTime(),
+          reason: 'Knowledge base or verified PMS information could not answer the guest question',
+          suggested: context.messageText }),
+      } });
+    },
+  })(args);
+}
+
 /**
  * Process inbound guest message, detect intent and trigger automated actions with RAG
  */
@@ -480,6 +508,21 @@ export async function processGuestMessageAI({
   const serviceRequest = await captureReservationRequests(database, { hotelId: effectiveHotelId, conversationId, messageText });
   if (serviceRequest) return serviceRequest;
 
+  const information = await answerGuestInformation({ hotelId: effectiveHotelId, conversationId, messageText, guest }, database);
+  if (information) {
+    const current = await database.conversation.findUnique({ where: { id: conversationId } });
+    const config = await database.aiConfig.findUnique({ where: { hotelId: effectiveHotelId } });
+    const requiresApproval = config?.autoReply === false || !['ai-handling', 'escalated'].includes(current?.aiStatus);
+    const message = requiresApproval ? null : await database.message.create({ data: {
+      id: `m-info-${crypto.randomUUID()}`, conversationId, author: 'ai', channel,
+      body: information, at: timeStr, deliveryStatus: 'pending',
+    } });
+    if (!requiresApproval && !deferEmailDelivery) dispatchOutboundEmail({ channel, conversation, guest,
+      hotelId: effectiveHotelId, conversationId, text: information });
+    return { handled: true, requiresApproval, aiStatus: current?.aiStatus, type: 'hotel_information',
+      message, replyText: information, suggestedReply: information };
+  }
+
   // A department's completion is not the guest's confirmation. Keep later guest
   // messages with Front Office instead of making another task or declaring success.
   const awaiting = await guestReplyNeedsReview(database, effectiveHotelId, conversationId, messageText);
@@ -488,7 +531,8 @@ export async function processGuestMessageAI({
     replyText: 'Thank you for the update. Our Front Office team will check this with you and the responsible department.',
     escalation: { kind: 'guest_follow_up', reason: 'Guest replied while a department handoff needs Front Office review', urgency: 'High', raisedAt: timeStr, suggested: 'Review the guest reply and resolve or reopen the original work.' } };
 
-  if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY) {
+  const routineDelivery = housekeepingDelivery(messageText);
+  if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY && !routineDelivery) {
     const verificationContext = { hotelId: effectiveHotelId, conversationId };
     if (await guestVerification.validBinding(verificationContext)) {
       guestName = guest?.name || 'Guest';
@@ -533,6 +577,17 @@ export async function processGuestMessageAI({
     }
   }
 
+  if (routineDelivery) {
+    const replyText = await housekeepingRoomQuestion(database, effectiveHotelId, room);
+    if (replyText) {
+      const policy = await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText, guest, intentType: 'housekeeping', database, strict: deferEmailDelivery });
+      const requiresApproval = policy.requiresApproval || conversation.aiStatus !== 'ai-handling';
+      const message = requiresApproval ? null : await database.message.create({ data: { id: `m-${crypto.randomUUID()}`, conversationId, author: 'ai', channel, body: replyText, at: timeStr, deliveryStatus: 'pending' } });
+      if (!requiresApproval && !deferEmailDelivery) dispatchOutboundEmail({ channel, conversation, guest, hotelId: effectiveHotelId, conversationId, text: replyText });
+      return { handled: true, type: 'housekeeping_clarification', requiresApproval, aiStatus: requiresApproval ? 'human-takeover' : 'ai-handling', replyText, suggestedReply: replyText, message };
+    }
+  }
+
   // Generic assistance does not manufacture catalogue offers.
   const detectedUpsells = [];
 
@@ -566,7 +621,7 @@ export async function processGuestMessageAI({
           department: 'Maintenance',
           priority: 'High',
           status: 'New',
-          createdAt: timeStr,
+          createdAt: new Date().toISOString(),
           due: getDueTime(20),
           source: 'AI Detection',
           conversationId,
@@ -649,7 +704,7 @@ export async function processGuestMessageAI({
 
   // 3. Check for Housekeeping Intent
   for (const pattern of HOUSEKEEPING_PATTERNS) {
-    if (pattern.regex.test(messageText)) {
+    if (pattern.regex.test(routineDelivery?.normalized || messageText)) {
       const policy = await evaluateAiPolicy({ database, strict: deferEmailDelivery,
         hotelId: effectiveHotelId,
         messageText,
@@ -673,7 +728,7 @@ export async function processGuestMessageAI({
           department: 'Housekeeping',
           priority: pattern.priority,
           status: 'New',
-          createdAt: timeStr,
+          createdAt: new Date().toISOString(),
           due: dueTime,
           source: channel === 'whatsapp' ? 'WhatsApp' : 'Guest Chat',
           conversationId,
@@ -723,14 +778,9 @@ export async function processGuestMessageAI({
         },
       }).catch(() => { });
 
-      let aiReplyBody = await generateWithGemini({
-        prompt: `A hotel guest (${guestName}, Room ${room}) sent this message: "${messageText}". Write a polite, warm, concise 2-sentence hotel reply letting them know we have dispatched housekeeping with their ${pattern.item.toLowerCase()} right away.`,
-        systemInstruction: `You are the AI Front Desk assistant for ${hotelName}. Be warm, professional, concise, and helpful. Do not use placeholders.`,
-      });
-
-      if (!aiReplyBody) {
-        aiReplyBody = `Certainly, ${guestName.split(' ')[0] || 'Sir/Madam'}. I have logged your request for ${pattern.item.toLowerCase()} for Room ${room}. Our housekeeping team has been dispatched and will attend to this promptly.`;
-      }
+      const aiReplyBody = task
+        ? `Thank you. I have recorded your request for ${pattern.item.toLowerCase()} for room ${room} for our housekeeping team to review.`
+        : 'I could not record the housekeeping request. Please contact Front Office so they can help arrange it.';
 
       if (policy.requiresApproval) {
         return {
@@ -875,29 +925,8 @@ Write a polite, accurate, concise 1-3 sentence response directly answering their
     systemInstruction: ragSystem,
   });
 
-  // Contextual Fallback if Gemini API is offline or returns null
   if (!replyText) {
-    const lower = messageText.toLowerCase();
-    if (lower.includes('check-in') || lower.includes('check in') || lower.includes('arrival')) {
-      const ci = rag.hotelProfile?.checkIn || '15:00';
-      const co = rag.hotelProfile?.checkOut || '11:00';
-      replyText = `Our standard check-in time is from ${ci}, and check-out is until ${co}. If you require an early check-in or late check-out, please let us know and we will be delighted to assist you.`;
-    } else if (lower.includes('check-out') || lower.includes('checkout') || lower.includes('departure')) {
-      const co = rag.hotelProfile?.checkOut || '11:00';
-      replyText = `Check-out time is until ${co}. Late check-out can be arranged upon request subject to availability.`;
-    } else if (lower.includes('breakfast')) {
-      replyText = `Breakfast is served daily in our dining room starting at 07:00. We offer a buffet featuring fresh local Belgian pastries, artisanal cheeses, fruit, and hot beverages.`;
-    } else if (lower.includes('wifi') || lower.includes('wi-fi') || lower.includes('internet')) {
-      const wifiName = `${(rag.hotelProfile?.name || 'Hotel').replace(/\s+/g, '')}-Guest`;
-      replyText = `High-speed complimentary Wi-Fi is available throughout the hotel. You can connect to '${wifiName}' with no password required.`;
-    } else if (lower.includes('pet') || lower.includes('dog') || lower.includes('cat')) {
-      replyText = `Small well-behaved pets are welcome at our property upon advance notice. Please inform the front desk so we can prepare pet amenities for your room.`;
-    } else if (rag.chunks.length > 0) {
-      const snippet = rag.chunks[0].content.slice(0, 150).trim();
-      replyText = `Regarding your inquiry: "${snippet}..." Our front desk team is also available 24/7 if you have further questions.`;
-    } else {
-      replyText = `Thank you for your message, ${guestName.split(' ')[0] || 'Guest'}. Our front office team at ${hotelName} is at your service. Please let us know if you need anything specific for your stay.`;
-    }
+    replyText = 'I could not find the information needed to answer your question. Please contact Front Office for assistance.';
   }
 
   // 6. Persist Knowledge Used in Conversation

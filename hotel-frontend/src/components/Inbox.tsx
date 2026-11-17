@@ -1,7 +1,8 @@
+import { conversationTime, messageTime, dateLabel } from '@/lib/timeline';
 import { ReservationRequests } from './ReservationRequests';
 import { UpsellRecommendations } from './UpsellRecommendations';
 import { GuestHandoffList } from './GuestHandoffs';
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   ArrowLeft,
   BookOpen,
@@ -38,6 +39,7 @@ import { TaskComposer } from "./TaskComposer";
 
 const filters = [
   "All",
+  "Unread",
   "AI handling",
   "Human takeover",
   "Escalated",
@@ -73,6 +75,8 @@ const stageLabel: Record<Conversation["stage"], string> = {
 function matches(conversation: Conversation, filter: Filter) {
   const channels = conversation.channels || (conversation.primaryChannel ? [conversation.primaryChannel] : ["whatsapp"]);
   switch (filter) {
+    case "Unread":
+      return conversation.unread > 0;
     case "All":
       return true;
     case "AI handling":
@@ -135,6 +139,7 @@ function ListItem({
   active: boolean;
   onSelect: () => void;
 }) {
+  const timezone = useApp(s => s.hotelProfile.timezone);
   return (
     <button
       onClick={onSelect}
@@ -147,7 +152,7 @@ function ListItem({
         <ChannelMark channel={conversation.primaryChannel} />
         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">{conversation.guest?.name ?? "Guest"}</span>
         {conversation.guest?.vip && <Crown className="size-3 shrink-0 text-pine-600" />}
-        <span className="tnum shrink-0 font-mono text-[10.5px] text-ink-4">{conversation.lastAt}</span>
+        <span className="tnum shrink-0 font-mono text-[10.5px] text-ink-4">{dateLabel(conversationTime(conversation) ? new Date(conversationTime(conversation)).toISOString() : conversation.lastAt, timezone)}</span>
       </div>
       <p className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-ink-3">{lastGuestLine(conversation)}</p>
       <div className="mt-1.5 flex items-center gap-1.5">
@@ -169,22 +174,34 @@ function ListItem({
 
 /* ---------------------------------------------------------------- thread -- */
 
-function Thread({ conversation }: { conversation: Conversation }) {
+function Thread({ conversation, unreadStartId }: { conversation: Conversation; unreadStartId: string | null }) {
+  const timezone = useApp(s => s.hotelProfile.timezone);
+  const unreadRef = useRef<HTMLLIElement>(null);
+  const endRef = useRef<HTMLLIElement>(null);
+  const messages = [...conversation.messages].sort((a, b) => messageTime(a) - messageTime(b));
+  useEffect(() => {
+    (unreadRef.current || endRef.current)?.scrollIntoView({ block: 'nearest' });
+  }, [conversation.id, unreadStartId]);
   return (
     <ol className="space-y-3.5">
-      {conversation.messages.map((m) => {
+      <li className="sticky top-0 z-10 flex justify-between bg-surface p-2 text-xs text-ink-3">
+        <span>Oldest to newest | {conversation.unread > 0 ? `${conversation.unread} unread` : 'Latest messages below'}</span>
+        <button className="font-medium text-pine-600" onClick={() => endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}>Jump to latest</button>
+      </li>
+      {messages.map((m) => {
         if (m.author === "system") {
           return (
             <li key={m.id} className="flex items-start justify-center gap-2 py-0.5">
               <p className="max-w-md rounded-full border border-line bg-paper-2 px-3 py-1 text-center text-[11px] leading-snug text-ink-3">
-                <span className="tnum font-mono">{m.at}</span> · {m.body}
+                <span className="tnum font-mono">{dateLabel(messageTime(m) ? new Date(messageTime(m)).toISOString() : m.at, timezone)}</span> · {m.body}
               </p>
             </li>
           );
         }
         const isGuest = m.author === "guest";
         return (
-          <li key={m.id} className={cn("flex", isGuest ? "justify-start" : "justify-end")}>
+          <li key={m.id} ref={m.id === unreadStartId ? unreadRef : undefined} className={cn("flex flex-wrap", isGuest ? "justify-start" : "justify-end")}>
+            {m.id === unreadStartId && <div className="mb-3 w-full border-t border-pine-300 pt-2 text-center text-xs font-semibold text-pine-600">New messages</div>}
             <div className={cn("max-w-[85%] sm:max-w-[78%]", isGuest ? "" : "text-right")}>
               <p className="tnum mb-1 flex items-center gap-1.5 font-mono text-[10.5px] text-ink-4" style={{ justifyContent: isGuest ? "flex-start" : "flex-end" }}>
                 <ChannelMark channel={isGuest ? m.channel : m.author === "ai" ? "ai" : "staff"} />
@@ -192,7 +209,7 @@ function Thread({ conversation }: { conversation: Conversation }) {
                   {isGuest ? conversation.guest.name : m.author === "ai" ? "AI assistant" : (m.staffName ?? "Staff")}
                 </span>
                 {m.channel !== "internal" && <span>· {channelLabel(m.channel)}</span>}
-                <span>· {m.at}</span>
+                <span>· {dateLabel(messageTime(m) ? new Date(messageTime(m)).toISOString() : m.at, timezone)}</span>
                 {m.confidence !== undefined && <span className="font-sans">· {Math.round(m.confidence * 100)}% confident</span>}
               </p>
               <div
@@ -229,6 +246,7 @@ function Thread({ conversation }: { conversation: Conversation }) {
           </li>
         );
       })}
+      <li ref={endRef} aria-hidden="true" />
     </ol>
   );
 }
@@ -476,7 +494,9 @@ function Composer({
 
 export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: "manager" | "front-office"; staffName: string; initialFilter?: Filter }) {
   const conversations = useApp((s) => s.conversations);
+  const timezone = useApp(s => s.hotelProfile.timezone);
   const [filter, setFilter] = useState<Filter>(initialFilter);
+  const [unreadStartId, setUnreadStartId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   useEffect(() => { setFilter(initialFilter); setSelectedId(null); }, [initialFilter]);
@@ -504,16 +524,19 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
     }).catch(() => {});
   }, []);
 
-  const list = useMemo(() => conversations.filter((c) => matches(c, filter)), [conversations, filter]);
+  const list = useMemo(() => conversations.filter((c) => matches(c, filter)).sort((a, b) => Number(b.unread > 0) - Number(a.unread > 0) || conversationTime(b) - conversationTime(a)), [conversations, filter]);
   const counts = useMemo(() => {
     const result: Record<string, number> = {};
     filters.forEach((f) => (result[f] = conversations.filter((c) => matches(c, f)).length));
     return result;
   }, [conversations]);
 
-  const selected = list.find((c) => c.id === selectedId) ?? null;
+  const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
   const select = (id: string) => {
+    const conversation = conversations.find(c => c.id === id);
+    const incoming = [...(conversation?.messages || [])].sort((a, b) => messageTime(a) - messageTime(b)).filter(m => m.author === 'guest');
+    setUnreadStartId(conversation?.unread ? incoming.slice(-conversation.unread)[0]?.id || null : null);
     setSelectedId(id);
     markRead(id);
   };
@@ -538,6 +561,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
       return (
         <div className="space-y-4">
           <FilterBar active={filter} onChange={setFilter} counts={counts} />
+          <p className="px-3 py-2 text-xs text-ink-3">Unread first | newest activity first</p>
           {filter === 'Escalated' && <GuestHandoffList unlinkedOnly />}
           <div className="overflow-hidden rounded-card border border-line bg-surface">
             <div className="hidden grid-cols-[1.4fr_0.8fr_0.6fr_2fr_0.9fr_0.7fr_0.5fr] gap-3 border-b border-line bg-paper/60 px-4 py-2.5 text-[10.5px] font-semibold tracking-[0.1em] text-ink-4 uppercase lg:grid">
@@ -580,7 +604,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
                 <span>
                   <Badge tone={sentimentTone[c.sentiment]}>{c.sentiment}</Badge>
                 </span>
-                <span className="tnum font-mono text-[11px] text-ink-4 lg:text-right">{c.lastAt}</span>
+                <span className="tnum font-mono text-[11px] text-ink-4 lg:text-right">{dateLabel(conversationTime(c) ? new Date(conversationTime(c)).toISOString() : c.lastAt, timezone)}</span>
               </button>
             ))}
           </div>
@@ -613,7 +637,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <Thread conversation={selected} />
+              <Thread key={selected.id} conversation={selected} unreadStartId={unreadStartId} />
             </div>
             <Composer key={selected.id} conversation={selected} staffName={staffName} onCreateTask={() => setComposerOpen(true)} />
           </div>
@@ -633,6 +657,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
       <div className="flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-surface">
         <div className="border-b border-line px-3 py-2.5">
           <FilterBar active={filter} onChange={setFilter} counts={counts} />
+          <p className="px-3 py-2 text-xs text-ink-3">Unread first | newest activity first</p>
           {filter === 'Escalated' && <GuestHandoffList unlinkedOnly />}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -660,7 +685,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
             </Badge>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <Thread conversation={selected} />
+            <Thread key={selected.id} conversation={selected} unreadStartId={unreadStartId} />
           </div>
           <Composer key={selected.id} conversation={selected} staffName={staffName} onCreateTask={() => setComposerOpen(true)} compact />
         </div>
