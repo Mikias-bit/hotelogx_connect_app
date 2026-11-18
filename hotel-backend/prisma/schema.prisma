@@ -847,7 +847,66 @@ model ReservationServiceRequest {
   @@index([hotelId, conversationId, status])
 }
 
+model GuestMessagingConfig {
+  automaticEnabled Boolean @default(false)
+  automaticChannel String @default("email_first")
+  enabledSince DateTime?
+  mewsEnterpriseId String?
+  mewsIntegrationId String?
+  stayServiceId String?
+  lastScannedAt DateTime?
+  scanEnd DateTime?
+  scanCursor String?
+  workerToken String?
+  workerUntil DateTime?
+  automationError String?
+  hotelId String @id
+  whatsappTemplate String @default("")
+  whatsappLanguage String @default("en")
+  updatedBy String
+  updatedAt DateTime @updatedAt
+}
+
+model GuestMessagingInvite {
+  source String @default("staff")
+  id String @id @default(uuid())
+  hotelId String
+  reservationId String
+  customerId String
+  channel String
+  contact String
+  codeHash String @unique
+  status String @default("sending")
+  issuedBy String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  providerMessageId String?
+  conversationId String?
+  sourceMessageId String?
+  redeemedAt DateTime?
+  revokedAt DateTime?
+  revokedBy String?
+  @@index([hotelId, createdAt])
+  @@index([hotelId, reservationId, contact])
+}
+
+model GuestMessagingJob {
+  hotelId String
+  reservationId String
+  status String @default("pending")
+  revision Int @default(1)
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  leaseUntil DateTime?
+  leaseToken String?
+  reason String?
+  updatedAt DateTime @updatedAt
+  @@id([hotelId, reservationId])
+  @@index([hotelId, status, availableAt])
+}
+
 model PmsConversationBinding {
+  checkinInviteId String?
   conversationId String @id
   hotelId String
   reservationId String

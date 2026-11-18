@@ -56,8 +56,13 @@ export function createGuestVerification({ db = prisma, client = createPmsMcpClie
     if (!await db.conversation.findFirst({ where: { id: ctx.conversationId, guest: { hotelId: ctx.hotelId } } })) throw new Error('Conversation hotel mismatch');
   }
   async function validBinding(ctx) {
-    return db.pmsConversationBinding.findFirst({ where: { conversationId: ctx.conversationId, hotelId: ctx.hotelId,
+    const binding = await db.pmsConversationBinding.findFirst({ where: { conversationId: ctx.conversationId, hotelId: ctx.hotelId,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now() } }] } });
+    if (binding?.verificationMethod === 'staff-checkin-code') {
+      const { createGuestMessaging } = await import('./guestMessaging.js');
+      return createGuestMessaging({ db, client, now }).currentBinding(ctx, binding);
+    }
+    return binding;
   }
   async function latest(ctx, text) {
     const message = await db.message.findFirst({ where: { conversationId: ctx.conversationId, author: 'guest' }, orderBy: { createdAt: 'desc' } });

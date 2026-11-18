@@ -19,7 +19,13 @@ async function startServer() {
 
     let mailboxPollInterval = null;
     let upsellInterval = null;
+    let checkinInterval = null;
     if (process.env.NODE_ENV !== 'test') {
+      const { checkinAutomation } = await import('./modules/pms/checkinRuntime.js');
+      const checkinTick = () => checkinAutomation.run().catch(() => console.warn('[Check-in invitations] Worker failed; queued work retained'));
+      checkinInterval = setInterval(checkinTick, 60000);
+      checkinInterval.unref?.();
+      void checkinTick();
       const { runUpsellCampaigns } = await import('./modules/upsells/upsellRuntime.js');
       const tick = () => runUpsellCampaigns().catch(error => console.warn('[Upsell campaigns]', error.message));
       upsellInterval = setInterval(tick, 5 * 60000);
@@ -48,6 +54,7 @@ async function startServer() {
       console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
       if (mailboxPollInterval) clearInterval(mailboxPollInterval);
       if (upsellInterval) clearInterval(upsellInterval);
+      if (checkinInterval) clearInterval(checkinInterval);
       server.close(async () => {
         await prisma.$disconnect();
         console.log('🔌 Database disconnected cleanly.');

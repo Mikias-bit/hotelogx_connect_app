@@ -1,5 +1,6 @@
 import { createPmsMcpClient } from './pmsMcpClient.js';
 import { unpackMcp } from './pmsAiTools.js';
+import { createGuestMessaging, checkinMethod } from './guestMessaging.js';
 
 const directStaff = new Set(['InPerson', 'Phone', 'Email', 'Website', 'Message']);
 const providers = [['Booking.com', /booking\.com/i], ['Expedia', /\bexpedia\b/i], ['Agoda', /\bagoda\b/i], ['Hotels.com', /hotels\.com/i], ['Trip.com', /trip\.com/i], ['Airbnb', /\bairbnb\b/i]];
@@ -22,6 +23,9 @@ export async function lookupBookingOrigin(db, { hotelId, conversationId }, { cli
   const binding = await db.pmsConversationBinding.findFirst({ where: { hotelId, conversationId } });
   if (!binding || (binding.expiresAt && binding.expiresAt <= new Date())) return { type: 'unknown', reason: 'Reservation verification required' };
   try {
+    if (binding.verificationMethod === checkinMethod && !await createGuestMessaging({ db, client }).currentBinding({ hotelId, conversationId }, binding)) {
+      return { type: 'unknown', reason: 'Active guest messaging verification required' };
+    }
     const staff = actor || await db.user.findFirst({ where: { hotelId, role: { in: ['manager', 'front-office'] } } });
     if (!staff || staff.hotelId !== hotelId || !['manager', 'front-office'].includes(staff.role)) return { type: 'unknown', reason: 'Authorized PMS read unavailable' };
     const data = unpackMcp(await client.callTool(staff, 'get_reservations', { reservation_ids: [binding.reservationId] }));

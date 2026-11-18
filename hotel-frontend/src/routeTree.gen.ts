@@ -23,6 +23,7 @@ import { Route as ManagerRoomsRouteImport } from './routes/manager.rooms'
 import { Route as ManagerReportsRouteImport } from './routes/manager.reports'
 import { Route as ManagerLostFoundRouteImport } from './routes/manager.lost-found'
 import { Route as ManagerHandoverRouteImport } from './routes/manager.handover'
+import { Route as ManagerGuestMessagingRouteImport } from './routes/manager.guest-messaging'
 import { Route as ManagerFollowUpsRouteImport } from './routes/manager.follow-ups'
 import { Route as ManagerConversationsRouteImport } from './routes/manager.conversations'
 import { Route as MaintenanceTasksRouteImport } from './routes/maintenance.tasks'
@@ -39,6 +40,7 @@ import { Route as FrontOfficeRoomsRouteImport } from './routes/front-office.room
 import { Route as FrontOfficeReportsRouteImport } from './routes/front-office.reports'
 import { Route as FrontOfficeLostFoundRouteImport } from './routes/front-office.lost-found'
 import { Route as FrontOfficeHandoverRouteImport } from './routes/front-office.handover'
+import { Route as FrontOfficeGuestMessagingRouteImport } from './routes/front-office.guest-messaging'
 import { Route as FrontOfficeFollowUpsRouteImport } from './routes/front-office.follow-ups'
 import { Route as FrontOfficeConversationsRouteImport } from './routes/front-office.conversations'
 
@@ -110,6 +112,11 @@ const ManagerLostFoundRoute = ManagerLostFoundRouteImport.update({
 const ManagerHandoverRoute = ManagerHandoverRouteImport.update({
   id: '/manager/handover',
   path: '/manager/handover',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManagerGuestMessagingRoute = ManagerGuestMessagingRouteImport.update({
+  id: '/manager/guest-messaging',
+  path: '/manager/guest-messaging',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ManagerFollowUpsRoute = ManagerFollowUpsRouteImport.update({
@@ -192,6 +199,12 @@ const FrontOfficeHandoverRoute = FrontOfficeHandoverRouteImport.update({
   path: '/front-office/handover',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FrontOfficeGuestMessagingRoute =
+  FrontOfficeGuestMessagingRouteImport.update({
+    id: '/front-office/guest-messaging',
+    path: '/front-office/guest-messaging',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const FrontOfficeFollowUpsRoute = FrontOfficeFollowUpsRouteImport.update({
   id: '/front-office/follow-ups',
   path: '/front-office/follow-ups',
@@ -210,6 +223,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
   '/front-office/follow-ups': typeof FrontOfficeFollowUpsRoute
+  '/front-office/guest-messaging': typeof FrontOfficeGuestMessagingRoute
   '/front-office/handover': typeof FrontOfficeHandoverRoute
   '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
@@ -226,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
   '/manager/follow-ups': typeof ManagerFollowUpsRoute
+  '/manager/guest-messaging': typeof ManagerGuestMessagingRoute
   '/manager/handover': typeof ManagerHandoverRoute
   '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
@@ -244,6 +259,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
   '/front-office/follow-ups': typeof FrontOfficeFollowUpsRoute
+  '/front-office/guest-messaging': typeof FrontOfficeGuestMessagingRoute
   '/front-office/handover': typeof FrontOfficeHandoverRoute
   '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
@@ -260,6 +276,7 @@ export interface FileRoutesByTo {
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
   '/manager/follow-ups': typeof ManagerFollowUpsRoute
+  '/manager/guest-messaging': typeof ManagerGuestMessagingRoute
   '/manager/handover': typeof ManagerHandoverRoute
   '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
@@ -279,6 +296,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/front-office/conversations': typeof FrontOfficeConversationsRoute
   '/front-office/follow-ups': typeof FrontOfficeFollowUpsRoute
+  '/front-office/guest-messaging': typeof FrontOfficeGuestMessagingRoute
   '/front-office/handover': typeof FrontOfficeHandoverRoute
   '/front-office/lost-found': typeof FrontOfficeLostFoundRoute
   '/front-office/reports': typeof FrontOfficeReportsRoute
@@ -295,6 +313,7 @@ export interface FileRoutesById {
   '/maintenance/tasks': typeof MaintenanceTasksRoute
   '/manager/conversations': typeof ManagerConversationsRoute
   '/manager/follow-ups': typeof ManagerFollowUpsRoute
+  '/manager/guest-messaging': typeof ManagerGuestMessagingRoute
   '/manager/handover': typeof ManagerHandoverRoute
   '/manager/lost-found': typeof ManagerLostFoundRoute
   '/manager/reports': typeof ManagerReportsRoute
@@ -315,6 +334,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/front-office/conversations'
     | '/front-office/follow-ups'
+    | '/front-office/guest-messaging'
     | '/front-office/handover'
     | '/front-office/lost-found'
     | '/front-office/reports'
@@ -331,6 +351,7 @@ export interface FileRouteTypes {
     | '/maintenance/tasks'
     | '/manager/conversations'
     | '/manager/follow-ups'
+    | '/manager/guest-messaging'
     | '/manager/handover'
     | '/manager/lost-found'
     | '/manager/reports'
@@ -349,6 +370,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/front-office/conversations'
     | '/front-office/follow-ups'
+    | '/front-office/guest-messaging'
     | '/front-office/handover'
     | '/front-office/lost-found'
     | '/front-office/reports'
@@ -365,6 +387,7 @@ export interface FileRouteTypes {
     | '/maintenance/tasks'
     | '/manager/conversations'
     | '/manager/follow-ups'
+    | '/manager/guest-messaging'
     | '/manager/handover'
     | '/manager/lost-found'
     | '/manager/reports'
@@ -383,6 +406,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/front-office/conversations'
     | '/front-office/follow-ups'
+    | '/front-office/guest-messaging'
     | '/front-office/handover'
     | '/front-office/lost-found'
     | '/front-office/reports'
@@ -399,6 +423,7 @@ export interface FileRouteTypes {
     | '/maintenance/tasks'
     | '/manager/conversations'
     | '/manager/follow-ups'
+    | '/manager/guest-messaging'
     | '/manager/handover'
     | '/manager/lost-found'
     | '/manager/reports'
@@ -418,6 +443,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   FrontOfficeConversationsRoute: typeof FrontOfficeConversationsRoute
   FrontOfficeFollowUpsRoute: typeof FrontOfficeFollowUpsRoute
+  FrontOfficeGuestMessagingRoute: typeof FrontOfficeGuestMessagingRoute
   FrontOfficeHandoverRoute: typeof FrontOfficeHandoverRoute
   FrontOfficeLostFoundRoute: typeof FrontOfficeLostFoundRoute
   FrontOfficeReportsRoute: typeof FrontOfficeReportsRoute
@@ -434,6 +460,7 @@ export interface RootRouteChildren {
   MaintenanceTasksRoute: typeof MaintenanceTasksRoute
   ManagerConversationsRoute: typeof ManagerConversationsRoute
   ManagerFollowUpsRoute: typeof ManagerFollowUpsRoute
+  ManagerGuestMessagingRoute: typeof ManagerGuestMessagingRoute
   ManagerHandoverRoute: typeof ManagerHandoverRoute
   ManagerLostFoundRoute: typeof ManagerLostFoundRoute
   ManagerReportsRoute: typeof ManagerReportsRoute
@@ -545,6 +572,13 @@ declare module '@tanstack/react-router' {
       path: '/manager/handover'
       fullPath: '/manager/handover'
       preLoaderRoute: typeof ManagerHandoverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manager/guest-messaging': {
+      id: '/manager/guest-messaging'
+      path: '/manager/guest-messaging'
+      fullPath: '/manager/guest-messaging'
+      preLoaderRoute: typeof ManagerGuestMessagingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/manager/follow-ups': {
@@ -659,6 +693,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FrontOfficeHandoverRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/front-office/guest-messaging': {
+      id: '/front-office/guest-messaging'
+      path: '/front-office/guest-messaging'
+      fullPath: '/front-office/guest-messaging'
+      preLoaderRoute: typeof FrontOfficeGuestMessagingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/front-office/follow-ups': {
       id: '/front-office/follow-ups'
       path: '/front-office/follow-ups'
@@ -682,6 +723,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   FrontOfficeConversationsRoute: FrontOfficeConversationsRoute,
   FrontOfficeFollowUpsRoute: FrontOfficeFollowUpsRoute,
+  FrontOfficeGuestMessagingRoute: FrontOfficeGuestMessagingRoute,
   FrontOfficeHandoverRoute: FrontOfficeHandoverRoute,
   FrontOfficeLostFoundRoute: FrontOfficeLostFoundRoute,
   FrontOfficeReportsRoute: FrontOfficeReportsRoute,
@@ -698,6 +740,7 @@ const rootRouteChildren: RootRouteChildren = {
   MaintenanceTasksRoute: MaintenanceTasksRoute,
   ManagerConversationsRoute: ManagerConversationsRoute,
   ManagerFollowUpsRoute: ManagerFollowUpsRoute,
+  ManagerGuestMessagingRoute: ManagerGuestMessagingRoute,
   ManagerHandoverRoute: ManagerHandoverRoute,
   ManagerLostFoundRoute: ManagerLostFoundRoute,
   ManagerReportsRoute: ManagerReportsRoute,

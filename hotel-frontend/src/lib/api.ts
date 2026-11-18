@@ -1,4 +1,5 @@
 import type { ShiftHandover, HandoverInput } from './shiftHandover';
+import type { MessagingData, MessagingConfig, MessagingInvite, MessagingReservation, CheckinAutomationData } from './guestMessaging';
 import type { GuestHandoff } from './useGuestHandoffs';
 import type { OperationalBlocker } from '@/components/OperationalBlockers';
 import type { ReadyRoom } from './useReadiness';
@@ -23,7 +24,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/pms/guest-messaging') || endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -124,6 +125,14 @@ async function invitationRequest<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  getCheckinAutomation: () => request<CheckinAutomationData>('/pms/guest-messaging/automation'),
+  saveCheckinAutomation: (input: Omit<CheckinAutomationData, 'jobs'> & { guestContactsConfirmed: boolean }) => request<{ success: boolean }>('/pms/guest-messaging/automation', { method: 'PUT', body: JSON.stringify(input) }),
+  reviewCheckinInvitation: (id: string, action: string) => request<{ success: boolean }>(`/pms/guest-messaging/automation/review/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify({ action }) }),
+  getGuestMessaging: () => request<MessagingData>('/pms/guest-messaging'),
+  findMessagingReservations: (q: string) => request<MessagingReservation[]>(`/pms/guest-messaging/reservations?q=${encodeURIComponent(q)}`),
+  inviteGuestMessaging: (input: { reservationId: string; channel: string; contact: string; contactConfirmed: boolean }) => request<MessagingInvite>('/pms/guest-messaging/invitations', { method: 'POST', body: JSON.stringify(input) }),
+  revokeGuestMessaging: (id: string) => request<MessagingInvite>(`/pms/guest-messaging/invitations/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
+  saveGuestMessagingConfig: (config: MessagingConfig) => request<MessagingConfig>('/pms/guest-messaging/config', { method: 'PUT', body: JSON.stringify(config) }),
   getMaintenance: () => request<MaintenanceData>('/maintenance-operations'),
   saveMaintenanceWorker: (id: string | undefined, data: Omit<MaintenanceWorker, 'id'>) => request<MaintenanceWorker>(`/maintenance-operations/workers${id ? `/${encodeURIComponent(id)}` : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) }),
   saveMaintenanceConfig: (data: { templateName: string; templateLanguage: string }) => request('/maintenance-operations/config', { method: 'PUT', body: JSON.stringify(data) }),

@@ -1,7 +1,8 @@
 import { createHotelInformationAnswerer } from './hotelInformation.js';
 import { createPmsMcpClient } from '../pms/pmsMcpClient.js';
 import { unpackMcp } from '../pms/pmsAiTools.js';
-import { housekeepingDelivery, housekeepingRoomQuestion } from './housekeepingIntent.js';
+import { housekeepingDelivery, housekeepingRoomQuestion, resolveHousekeepingFollowUp } from './housekeepingIntent.js';
+import { checkinRoomDecision } from '../pms/guestMessaging.js';
 import { captureReservationRequests } from '../pms/reservationRequests.js';
 import { prepareCatalogueReply, guardedQuote, reserveQuoteDelivery } from '../upsells/upsellRecommendations.js';
 import { createGuestTask, guestReplyNeedsReview } from '../operations/guestHandoffs.js';
@@ -14,7 +15,6 @@ import { emailService } from '../email/emailService.js';
 import { runPmsAiTools } from '../pms/pmsAiTools.js';
 import { createGuestVerification } from '../pms/guestVerification.js';
 
-const guestVerification = createGuestVerification();
 
 /**
  * Common stop words for keyword extraction
@@ -447,6 +447,7 @@ function dispatchOutboundEmail({ channel, conversation, guest, hotelId, conversa
 }
 
 export async function answerGuestInformation(args, database = prisma) {
+  const guestVerification = createGuestVerification({ db: database });
   return createHotelInformationAnswerer({
     retrieve: retrieveRelevantKnowledge, generate: generateWithGemini,
     policy: input => evaluateAiPolicy({ ...input, database }),
@@ -498,9 +499,11 @@ export async function processGuestMessageAI({
   if (!conversation) return null;
 
   const guest = conversation.guest;
+  const guestVerification = createGuestVerification({ db: database });
   let guestName = 'Guest';
   const effectiveHotelId = hotelId || guest?.hotelId;
   if (!effectiveHotelId || (hotelId && guest?.hotelId !== hotelId)) throw new Error('Conversation hotel mismatch');
+  messageText = await resolveHousekeepingFollowUp(database, { hotelId: effectiveHotelId, conversationId, channel, messageText });
   // Unverified conversations must not inherit a PMS guest name/room as AI context.
   let room = extractRoomNumber(messageText, null, null) || 'not provided';
   const timeStr = getClockTime();
@@ -532,11 +535,23 @@ export async function processGuestMessageAI({
     escalation: { kind: 'guest_follow_up', reason: 'Guest replied while a department handoff needs Front Office review', urgency: 'High', raisedAt: timeStr, suggested: 'Review the guest reply and resolve or reopen the original work.' } };
 
   const routineDelivery = housekeepingDelivery(messageText);
+  let linkedRoomReply;
+  if (routineDelivery) {
+    const existing = await database.pmsConversationBinding.findFirst({ where: { hotelId: effectiveHotelId, conversationId } });
+    if (existing?.verificationMethod === 'staff-checkin-code') {
+      const binding = await guestVerification.validBinding({ hotelId: effectiveHotelId, conversationId });
+      const decision = checkinRoomDecision(binding, room);
+      linkedRoomReply = decision.replyText;
+      if (decision.room) room = decision.room;
+    }
+  }
   if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY && !routineDelivery) {
     const verificationContext = { hotelId: effectiveHotelId, conversationId };
-    if (await guestVerification.validBinding(verificationContext)) {
+    const verifiedBinding = await guestVerification.validBinding(verificationContext);
+    if (verifiedBinding) {
       guestName = guest?.name || 'Guest';
-      room = extractRoomNumber(messageText, conversation, guest) || 'not provided';
+      room = verifiedBinding.verificationMethod === 'staff-checkin-code' ? verifiedBinding.currentRoom || 'not provided'
+        : extractRoomNumber(messageText, conversation, guest) || 'not provided';
     }
     let verificationResult;
     try { verificationResult = await guestVerification.handle(verificationContext, messageText); }
@@ -578,7 +593,7 @@ export async function processGuestMessageAI({
   }
 
   if (routineDelivery) {
-    const replyText = await housekeepingRoomQuestion(database, effectiveHotelId, room);
+    const replyText = linkedRoomReply || await housekeepingRoomQuestion(database, effectiveHotelId, room);
     if (replyText) {
       const policy = await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText, guest, intentType: 'housekeeping', database, strict: deferEmailDelivery });
       const requiresApproval = policy.requiresApproval || conversation.aiStatus !== 'ai-handling';
