@@ -1,6 +1,35 @@
 # Guest messaging connection at check-in
 
-Implemented locally on 18 November 2026, including automatic check-in invitations. This feature requires deployment before hotels can use it. QR codes are deferred.
+Updated locally on 22 November 2026, including two-stage welcomes and remembered verified contacts. The new welcome feature requires its database migration and backend/frontend deployment. QR codes are deferred.
+
+## Welcome messages and remembered contacts
+
+Managers can enable **Welcome messages and remembered guests** on Guest messaging, after configuring automatic messaging and the PMS connection. This replaces automatic CONNECT invitations with a booking-confirmation welcome and an actual-check-in welcome. Leaving it disabled preserves the original invitation flow described below.
+
+- Choose the sender separately for booking confirmation and check-in: Hotelogx or PMS/staff. The booking welcome defaults to PMS/staff to avoid duplicating an existing PMS confirmation. Managers must confirm responsibility before enabling Hotelogx sending.
+- The booking welcome includes the guest's first name, hotel name, arrival date, hotel check-in time, optional arrival instructions, and an optional public online check-in portal. Only reservations created after enabling welcome automation qualify; old bookings are not backfilled. A public catalogue URL is optional.
+- Bookings inside the hotel's pre-arrival offer window (default three days) can receive eligible live catalogue offers in the confirmation welcome. The same product outreach ledger excludes previous staff/AI offers and prevents the separate campaign repeating the combined offer. Earlier bookings keep their later pre-arrival campaign. Existing AI approval, VIP and staff takeover checks apply to automatic product offers.
+- The actual-check-in welcome includes the name, hotel, live checkout date and time in the hotel's timezone when the destination has already been verified for this reservation. An unverified contact receives a general welcome and verification instructions without personal stay details. Reception, online check-in and kiosks are supported when the PMS records an actual checked-in stay; online pre-registration alone is insufficient.
+- Verified contacts do not need to press Accept. The proof belongs to a hotel, reservation, owning customer and contact. A matching phone/email in the PMS alone is not proof. Front Office can explicitly verify identity and contact ownership at reception; successful existing code verification is also remembered.
+- A welcome email contains a random reference in its subject. Replying from its recipient in the same thread consumes that reference and verifies the thread. Only the hash is stored in the welcome ledger. Treat the original email and subject as private. A different thread needs a fresh unused welcome reference or code verification; another sender in the thread cannot inherit access.
+- Unverified WhatsApp guests can reply `VERIFY` after receiving a welcome. The system checks the current stay and sends the existing single-use CONNECT invitation to the same number. Configure the CONNECT template as well as welcome templates for this fallback. Multiple matching stays require Front Office assistance.
+- Current PMS ownership, contact and room assignment are checked before using the remembered connection. Room moves follow the latest synced room mapping. Checkout/cancellation, contact changes, expired proof or revocation block use. Public knowledge-base questions remain available without verification. Checkout extensions beyond the proof's original expiry require re-verification.
+
+Staff can record a welcome already sent by the PMS or staff, view the latest 100 welcome records, and revoke verified contacts. One durable sending record per hotel/reservation/stage prevents repeat delivery across workers and channels. Failed or uncertain sends require review and are not automatically resent. Hotelogx cannot discover messages sent outside its connected history: coordinate sender ownership and record external welcomes before automation runs. Recording an external send cannot cancel a message already in flight.
+
+Welcome messages are transactional automation controlled by these settings; product offers inside them also respect upsell/AI policies. Email-first uses a suitable PMS email when present, otherwise WhatsApp with an approved template. A delivery failure does not automatically switch channels. Both welcome templates require one body text parameter containing the welcome text and use the configured invitation language. Provider approval is required; messages exceeding the template parameter limit are held for review.
+
+The online check-in setting accepts a **public HTTPS portal** where the guest authenticates. It does not generate individual Mews Guest Portal links, and a private per-reservation URL must not be configured as a hotel-wide link.
+
+### Deploying the welcome update
+
+1. From `hotel-backend`, run `npm run prisma:deploy` against the intended database. This includes the additive `20261122010000_guest_welcome_lifecycle` migration, two new tables and additional configuration/binding fields.
+2. Generate Prisma Client (`npm run prisma:generate`) and deploy the backend. Build and deploy the frontend as well.
+3. Keep the existing `ServiceOrderUpdated` General Webhook and every-minute `/api/pms/guest-messaging-worker` Scheduler job. No additional scheduler or secret is required.
+4. Configure hotel timezone/check-in time, arrival instructions, optional public links and approved WhatsApp templates. Coordinate PMS/staff ownership, enable automatic messaging, then enable welcome mode.
+5. Test a controlled new confirmation, short-lead offer, actual check-in, verified reply, room move and checkout. Inspect welcome history and review jobs before general rollout.
+
+Local automated coverage: `guestWelcome.test.js`, `guestWelcomeRoutes.test.js` and `guestContactRecognition.test.js`, alongside the original invitation, automation, email, WhatsApp and upsell regression suites. Live delivery and migration against the production database are separate deployment checks.
 
 ## Automatic invitations
 
@@ -17,6 +46,8 @@ The worker uses durable leases and processes up to five recovery pages and ten q
 Checkout/cancellation events revoke pending invitations and check-in conversation bindings. Live verification also blocks access if the PMS no longer shows an active stay, even if an event was missed. Room moves continue using the current PMS assignment rather than the invitation's original room.
 
 ## Automatic deployment and webhook registration
+
+To create/update the one-minute Cloud Scheduler job after attaching the worker secret to Cloud Run, run `powershell -File hotel-backend/scripts/setup-checkin-scheduler.ps1` from the repository root. Defaults are project `hotelogx`, region `europe-west4`, backend `hotelogx-connect-backend`, and job `hotelogx-checkin-worker`. The script reads the exact secret version attached to Cloud Run into memory and creates or updates only this job, without printing the credential. Re-run it after rotating the backend worker secret: Scheduler's authentication header is a snapshot, not a live Secret Manager reference. Schedule uses UTC to avoid daylight-saving gaps; `* * * * *` means every minute in Amsterdam too.
 
 1. Deploy both additive migrations, including `20261118030000_automatic_guest_messaging`, regenerate Prisma Client, and deploy backend and frontend.
 2. Configure independent random secrets (at least 32 characters) in backend Secret Manager/environment: `MEWS_GENERAL_WEBHOOK_SECRET` and `CHECKIN_WORKER_SECRET`. These are not the Marketplace onboarding token.

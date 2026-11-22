@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppShell } from './AppShell';
 import { CheckinAutomation } from './CheckinAutomation';
+import { GuestWelcomes } from './GuestWelcomes';
 import { Button, Card } from './ui';
 import { api } from '@/lib/api';
 import { useCurrentUser } from '@/lib/session';
@@ -65,6 +66,7 @@ export function GuestMessagingPage() {
         </form>
       </Card>
       <Card className="space-y-3 p-4">
+        <GuestWelcomes reservationId={reservationId} channel={channel} contact={contact} />
         <div className="flex justify-between"><h2 className="font-semibold">Recent invitations</h2><Button disabled={busy} onClick={() => void perform(async () => { await refresh(); })}>Refresh</Button></div>
         <p className="text-xs text-ink-3">Latest 100 invitations. Redeemed means the code was used; access still requires a current checked-in stay and ends at the recorded checkout time. Times use {timezone}.</p>
         {!data ? <p>Loading…</p> : !data.invitations.length ? <p>No invitations yet.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Contact</th><th>Reservation</th><th>Status</th><th>Sent / code expiry</th><th>Access</th></tr></thead><tbody>{data.invitations.map(item => <tr key={item.id} className="border-t border-line">

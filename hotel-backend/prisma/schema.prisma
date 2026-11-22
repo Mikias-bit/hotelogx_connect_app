@@ -848,6 +848,16 @@ model ReservationServiceRequest {
 }
 
 model GuestMessagingConfig {
+  welcomeEnabled Boolean @default(false)
+  welcomeSince DateTime?
+  confirmationSender String @default("pms")
+  checkinSender String @default("hotelogx")
+  arrivalInstructions String @default("")
+  onlineCheckinUrl String @default("")
+  catalogueUrl String @default("")
+  welcomeUpsells Boolean @default(true)
+  bookingWelcomeTemplate String @default("")
+  checkinWelcomeTemplate String @default("")
   automaticEnabled Boolean @default(false)
   automaticChannel String @default("email_first")
   enabledSince DateTime?
@@ -906,6 +916,7 @@ model GuestMessagingJob {
 }
 
 model PmsConversationBinding {
+  contactVerificationId String?
   checkinInviteId String?
   conversationId String @id
   hotelId String
@@ -916,6 +927,47 @@ model PmsConversationBinding {
   expiresAt DateTime?
   verificationMethod String @default("staff")
   @@index([hotelId])
+}
+
+model GuestContactVerification {
+  id String @id @default(uuid())
+  hotelId String
+  reservationId String
+  customerId String
+  channel String
+  contact String
+  conversationId String?
+  inviteId String?
+  method String
+  verifiedBy String
+  verifiedAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  @@unique([hotelId, reservationId, channel, contact], map: "GuestContactVerification_contact_key")
+  @@index([hotelId, channel, contact, expiresAt])
+}
+
+model GuestWelcome {
+  id String @id @default(uuid())
+  hotelId String
+  reservationId String
+  customerId String
+  stage String
+  channel String
+  contact String
+  status String @default("sending")
+  source String @default("automatic")
+  recordedBy String
+  conversationId String?
+  messageId String?
+  providerMessageId String?
+  replyTokenHash String? @unique
+  replyTokenUsedAt DateTime?
+  verifyMessageId String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@unique([hotelId, reservationId, stage])
+  @@index([hotelId, channel, contact])
 }
 
 model PmsGuestVerification {

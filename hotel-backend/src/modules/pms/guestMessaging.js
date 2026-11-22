@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { rememberGuestContact } from './guestContactRecognition.js';
 
 export const checkinMethod = 'staff-checkin-code';
 const fail = message => { throw Object.assign(new Error(message), { publicMessage: message, status: 409 }); };
@@ -110,6 +111,8 @@ export function createGuestMessaging({ db, client, sendEmail, sendWhatsApp, now 
       const binding = { hotelId: ctx.hotelId, reservationId: stay.Id, customerId: stay.AccountId, verifiedBy: row.issuedBy, verifiedAt: redeemedAt,
         expiresAt: new Date(stay.ScheduledEndUtc), verificationMethod: checkinMethod, checkinInviteId: row.id };
       await tx.pmsConversationBinding.upsert({ where: { conversationId: ctx.conversationId }, create: { conversationId: ctx.conversationId, ...binding }, update: binding });
+      if (tx.guestContactVerification) await rememberGuestContact(tx, { hotelId: ctx.hotelId, reservationId: stay.Id, customerId: stay.AccountId,
+        channel: row.channel, contact: row.contact, conversationId: ctx.conversationId, inviteId: row.id, method: 'checkin-code', verifiedBy: row.issuedBy, expiresAt: new Date(stay.ScheduledEndUtc) });
       // Close any older, incomplete self-service verification questions.
       await tx.pmsGuestVerification.deleteMany({ where: { hotelId: ctx.hotelId, conversationId: ctx.conversationId } });
       return 'Your guest messaging is connected for this stay. You can now send requests without repeating your room number. Please send your request in your next message.';
@@ -120,6 +123,11 @@ export function createGuestMessaging({ db, client, sendEmail, sendWhatsApp, now 
       await lock(tx, actor.hotelId);
       const row = await tx.guestMessagingInvite.findFirst({ where: { id, hotelId: actor.hotelId } });
       if (!row) fail('Invitation not found');
+      if (tx.guestContactVerification) {
+        const proofs = await tx.guestContactVerification.findMany({ where: { hotelId: actor.hotelId, inviteId: row.id } });
+        await tx.guestContactVerification.updateMany({ where: { hotelId: actor.hotelId, inviteId: row.id }, data: { revokedAt: now() } });
+        await tx.pmsConversationBinding.deleteMany({ where: { hotelId: actor.hotelId, contactVerificationId: { in: proofs.map(p => p.id) } } });
+      }
       if (row.conversationId) await tx.pmsConversationBinding.deleteMany({ where: { hotelId: actor.hotelId, conversationId: row.conversationId,
         reservationId: row.reservationId, verificationMethod: checkinMethod, checkinInviteId: row.id } });
       return publicInvite(await tx.guestMessagingInvite.update({ where: { id }, data: { status: 'revoked', revokedAt: now(), revokedBy: actor.id } }));

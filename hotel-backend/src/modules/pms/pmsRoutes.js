@@ -1,6 +1,7 @@
 import { createReservationRequestRouter } from './reservationRequestRoutes.js';
 import { createGuestMessagingRouter } from './guestMessagingRoutes.js';
 import { createCheckinWebhookRouter } from './checkinWebhookRoutes.js';
+import { createGuestWelcomeRouter } from './guestWelcomeRoutes.js';
 import { Router } from 'express';
 import { createPmsMcpClient } from './pmsMcpClient.js';
 import { createUpsellRouter } from './pmsUpsellRoutes.js';
@@ -22,6 +23,7 @@ import { authenticate } from '../../middlewares/auth.js';
 
 const router = Router();
 router.use(createCheckinWebhookRouter());
+router.use('/guest-welcomes', createGuestWelcomeRouter());
 router.use('/guest-messaging', createGuestMessagingRouter());
 router.use('/upsells', createUpsellRouter());
 router.use('/bookings', createBookingRouter());

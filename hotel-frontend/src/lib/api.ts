@@ -1,4 +1,5 @@
 import type { ShiftHandover, HandoverInput } from './shiftHandover';
+import type { WelcomeConfig, WelcomeData } from './guestMessaging';
 import type { MessagingData, MessagingConfig, MessagingInvite, MessagingReservation, CheckinAutomationData } from './guestMessaging';
 import type { GuestHandoff } from './useGuestHandoffs';
 import type { OperationalBlocker } from '@/components/OperationalBlockers';
@@ -24,7 +25,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/pms/guest-messaging') || endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/pms/guest-welcomes') || endpoint.startsWith('/pms/guest-messaging') || endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -125,6 +126,11 @@ async function invitationRequest<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  getGuestWelcomes: () => request<WelcomeData>('/pms/guest-welcomes'),
+  saveWelcomeConfig: (input: WelcomeConfig & { senderResponsibilityConfirmed: boolean }) => request('/pms/guest-welcomes/config', { method: 'PUT', body: JSON.stringify(input) }),
+  recordWelcomeSent: (reservationId: string, stage: string) => request('/pms/guest-welcomes/record-external', { method: 'POST', body: JSON.stringify({ reservationId, stage, sentConfirmed: true }) }),
+  confirmGuestContact: (reservationId: string, channel: string, contact: string) => request('/pms/guest-welcomes/verify-contact', { method: 'POST', body: JSON.stringify({ reservationId, channel, contact, identityAndContactConfirmed: true }) }),
+  revokeGuestContact: (id: string) => request(`/pms/guest-welcomes/contacts/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
   getCheckinAutomation: () => request<CheckinAutomationData>('/pms/guest-messaging/automation'),
   saveCheckinAutomation: (input: Omit<CheckinAutomationData, 'jobs'> & { guestContactsConfirmed: boolean }) => request<{ success: boolean }>('/pms/guest-messaging/automation', { method: 'PUT', body: JSON.stringify(input) }),
   reviewCheckinInvitation: (id: string, action: string) => request<{ success: boolean }>(`/pms/guest-messaging/automation/review/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify({ action }) }),

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { rememberGuestContact, storedGuestSender, contactBindingMethod } from './guestContactRecognition.js';
 import { prisma } from '../../config/database.js';
 import { encryptToken, decryptToken } from '../../utils/tokenCrypto.js';
 import { emailService } from '../email/emailService.js';
@@ -58,6 +59,10 @@ export function createGuestVerification({ db = prisma, client = createPmsMcpClie
   async function validBinding(ctx) {
     const binding = await db.pmsConversationBinding.findFirst({ where: { conversationId: ctx.conversationId, hotelId: ctx.hotelId,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now() } }] } });
+    if (binding?.verificationMethod === contactBindingMethod) {
+      try { return await (await import('./guestWelcomeRuntime.js')).contactRecognitionFor(db).currentBinding(ctx, binding); }
+      catch { return null; }
+    }
     if (binding?.verificationMethod === 'staff-checkin-code') {
       const { createGuestMessaging } = await import('./guestMessaging.js');
       return createGuestMessaging({ db, client, now }).currentBinding(ctx, binding);
@@ -147,6 +152,12 @@ export function createGuestVerification({ db = prisma, client = createPmsMcpClie
           const binding = { hotelId: ctx.hotelId, reservationId: fresh.reservation_id, customerId: fresh.customer_id,
             verifiedBy: 'guest-email-code', verificationMethod: 'email-code', verifiedAt: now(), expiresAt };
           await tx.pmsConversationBinding.upsert({ where: { conversationId: ctx.conversationId }, create: { conversationId: ctx.conversationId, ...binding }, update: binding });
+          if (tx.guestContactVerification) {
+            const sender = await storedGuestSender(tx, ctx);
+            if (sender) await rememberGuestContact(tx, { hotelId: ctx.hotelId, reservationId: fresh.reservation_id, customerId: fresh.customer_id,
+              channel: sender.channel, contact: sender.contact, conversationId: ctx.conversationId, method: 'booking-email-code', verifiedBy: 'guest-email-code',
+              expiresAt: new Date(`${data.check_out}T23:59:59Z`) });
+          }
         });
         return result('Your reservation is verified for this conversation. How can I help with your stay?', { verified: true, resumeRequest: data.request });
       } catch { return block(row); }

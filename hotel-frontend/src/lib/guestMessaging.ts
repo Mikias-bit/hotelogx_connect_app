@@ -10,3 +10,13 @@ export interface CheckinAutomationData {
   lastScannedAt?: string; error?: string;
   jobs: { reservationId: string; status: string; reason: string | null; updatedAt: string }[];
 }
+export interface WelcomeConfig {
+  enabled: boolean; confirmationSender: 'hotelogx' | 'pms'; checkinSender: 'hotelogx' | 'pms';
+  arrivalInstructions: string; onlineCheckinUrl: string; catalogueUrl: string; welcomeUpsells: boolean;
+  bookingWelcomeTemplate: string; checkinWelcomeTemplate: string;
+}
+export interface WelcomeData {
+  config: WelcomeConfig;
+  welcomes: { id: string; reservationId: string; stage: string; channel: string; contact: string; status: string; source: string; createdAt: string }[];
+  contacts: { id: string; reservationId: string; channel: string; contact: string; method: string; expiresAt: string }[];
+}

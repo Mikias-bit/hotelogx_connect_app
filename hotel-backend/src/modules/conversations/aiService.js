@@ -535,22 +535,27 @@ export async function processGuestMessageAI({
     escalation: { kind: 'guest_follow_up', reason: 'Guest replied while a department handoff needs Front Office review', urgency: 'High', raisedAt: timeStr, suggested: 'Review the guest reply and resolve or reopen the original work.' } };
 
   const routineDelivery = housekeepingDelivery(messageText);
+  const roomRequest = routineDelivery || MAINTENANCE_PATTERNS.some(pattern => pattern.regex.test(messageText));
   let linkedRoomReply;
-  if (routineDelivery) {
+  if (roomRequest) {
     const existing = await database.pmsConversationBinding.findFirst({ where: { hotelId: effectiveHotelId, conversationId } });
-    if (existing?.verificationMethod === 'staff-checkin-code') {
+    if (['staff-checkin-code', 'verified-stay-contact'].includes(existing?.verificationMethod)) {
       const binding = await guestVerification.validBinding({ hotelId: effectiveHotelId, conversationId });
       const decision = checkinRoomDecision(binding, room);
       linkedRoomReply = decision.replyText;
       if (decision.room) room = decision.room;
     }
+    const recognitionConfig = await database.guestMessagingConfig.findUnique({ where: { hotelId: effectiveHotelId } });
+    if (recognitionConfig?.welcomeEnabled && !['staff-checkin-code', 'verified-stay-contact'].includes(existing?.verificationMethod)) {
+      linkedRoomReply = 'Before arranging a room request, please verify your stay. Reply to your welcome email in the same thread, or reply VERIFY on WhatsApp. Front Office can also confirm your contact.';
+    }
   }
-  if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY && !routineDelivery) {
+  if (process.env.PMS_MCP_URL && process.env.PMS_MCP_CONTEXT_KEY && !routineDelivery && !linkedRoomReply) {
     const verificationContext = { hotelId: effectiveHotelId, conversationId };
     const verifiedBinding = await guestVerification.validBinding(verificationContext);
     if (verifiedBinding) {
       guestName = guest?.name || 'Guest';
-      room = verifiedBinding.verificationMethod === 'staff-checkin-code' ? verifiedBinding.currentRoom || 'not provided'
+      room = ['staff-checkin-code', 'verified-stay-contact'].includes(verifiedBinding.verificationMethod) ? verifiedBinding.currentRoom || 'not provided'
         : extractRoomNumber(messageText, conversation, guest) || 'not provided';
     }
     let verificationResult;
@@ -592,10 +597,10 @@ export async function processGuestMessageAI({
     }
   }
 
-  if (routineDelivery) {
-    const replyText = linkedRoomReply || await housekeepingRoomQuestion(database, effectiveHotelId, room);
+  if (roomRequest) {
+    const replyText = linkedRoomReply || (routineDelivery ? await housekeepingRoomQuestion(database, effectiveHotelId, room) : null);
     if (replyText) {
-      const policy = await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText, guest, intentType: 'housekeeping', database, strict: deferEmailDelivery });
+      const policy = await evaluateAiPolicy({ hotelId: effectiveHotelId, messageText, guest, intentType: routineDelivery ? 'housekeeping' : 'maintenance', database, strict: deferEmailDelivery });
       const requiresApproval = policy.requiresApproval || conversation.aiStatus !== 'ai-handling';
       const message = requiresApproval ? null : await database.message.create({ data: { id: `m-${crypto.randomUUID()}`, conversationId, author: 'ai', channel, body: replyText, at: timeStr, deliveryStatus: 'pending' } });
       if (!requiresApproval && !deferEmailDelivery) dispatchOutboundEmail({ channel, conversation, guest, hotelId: effectiveHotelId, conversationId, text: replyText });

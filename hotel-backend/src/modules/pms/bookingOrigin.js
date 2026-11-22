@@ -23,6 +23,9 @@ export async function lookupBookingOrigin(db, { hotelId, conversationId }, { cli
   const binding = await db.pmsConversationBinding.findFirst({ where: { hotelId, conversationId } });
   if (!binding || (binding.expiresAt && binding.expiresAt <= new Date())) return { type: 'unknown', reason: 'Reservation verification required' };
   try {
+    if (binding.verificationMethod === 'verified-stay-contact' && !await (await import('./guestWelcomeRuntime.js')).contactRecognitionFor(db).currentBinding({ hotelId, conversationId }, binding)) {
+      return { type: 'unknown', reason: 'Active guest messaging verification required' };
+    }
     if (binding.verificationMethod === checkinMethod && !await createGuestMessaging({ db, client }).currentBinding({ hotelId, conversationId }, binding)) {
       return { type: 'unknown', reason: 'Active guest messaging verification required' };
     }

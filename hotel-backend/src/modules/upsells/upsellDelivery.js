@@ -58,6 +58,17 @@ export function createUpsellDelivery({ db, client, sendEmail, sendWhatsApp, broa
     for (const reservation of reservations) {
       if (!dueForUpsell(reservation, config, now(), hotel.timezone) || reservation.guest.vip) continue;
       try {
+        const welcome = db.guestMessagingConfig && await db.guestMessagingConfig.findUnique({ where: { hotelId } });
+        if (welcome?.automaticEnabled && welcome.welcomeEnabled && welcome.confirmationSender === 'hotelogx' && welcome.welcomeSince) {
+          const { checkinPmsReader } = await import('../pms/checkinPmsReader.js');
+          const original = await (await checkinPmsReader(db, welcome)).reservation(reservation.mewsId);
+          if (!original) { counts.skipped++; continue; }
+          if (new Date(original.CreatedUtc) >= welcome.welcomeSince) {
+            const delivered = await db.guestWelcome.findUnique({ where: { hotelId_reservationId_stage: { hotelId, reservationId: reservation.mewsId, stage: 'confirmation' } } });
+            if (!delivered || ['sending', 'uncertain', 'failed'].includes(delivered.status)) { counts.skipped++; continue; }
+          }
+        }
+        if (await db.upsellOutreach.findFirst({ where: { hotelId, reservationId: reservation.mewsId, source: 'welcome' } })) { counts.skipped++; continue; }
         if (await db.upsellOutreach.findFirst({ where: { hotelId, reservationId: reservation.mewsId, source: 'campaign' } })) { counts.skipped++; continue; }
         const response = await client.callTool(manager, 'get_reservations', { reservation_ids: [reservation.mewsId] });
         if (response.isError) throw new Error('Reservation check failed');

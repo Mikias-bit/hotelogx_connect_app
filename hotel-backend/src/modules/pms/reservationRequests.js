@@ -49,6 +49,10 @@ async function updateRoutingConversation(tx, hotelId, conversationId, source) {
 // Only verified PMS source information can authorize direct-booking resolution.
 export async function captureReservationRequests(db, { hotelId, conversationId, messageText, messageId, sender }, { originLookup = lookupBookingOrigin } = {}) {
   if (isCheckinCodeMessage(messageText)) return captureGuestMessagingCode(db, { hotelId, conversationId, messageText, messageId, sender });
+  if (db.guestContactVerification) {
+    const remembered = await (await import('./welcomeInbound.js')).rememberWelcomeGuest(db, { hotelId, conversationId, messageText, messageId });
+    if (remembered) return remembered;
+  }
   const kinds = reservationRequestKinds(messageText);
   if (!kinds.length) return null;
   const checked = kinds.some(k => k !== 'extra_bed') ? await originLookup(db, { hotelId, conversationId }) : null;

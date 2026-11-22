@@ -8,7 +8,7 @@ export function chooseCheckinContact(config, customer, booker) {
   if (!customer) return { reason: 'Guest profile missing; confirm contact with the guest' };
   const address = email(customer.Email), number = phone(customer.Phone);
   if (booker && ((address && address === email(booker.Email)) || (number && number === phone(booker.Phone)))) return { reason: 'Contact is shared with a separate booker; Front Office must verify the staying guest' };
-  if (address && proxy.test(address)) return { reason: 'Booking-channel proxy address; Front Office must confirm a guest contact' };
+  if (customer.HasOtaEmail || (address && proxy.test(address))) return { reason: 'Booking-channel proxy address; Front Office must confirm a guest contact' };
   if (config.automaticChannel !== 'whatsapp' && address) return { channel: 'email', contact: address };
   if (config.automaticChannel !== 'email' && number && config.whatsappTemplate) return { channel: 'whatsapp', contact: number };
   return { reason: 'No suitable guest contact or approved WhatsApp template; Front Office review needed' };
@@ -19,7 +19,7 @@ export function eligibleCheckin(stay, config, now) {
   return stay?.State === 'Started' && stay.AccountType === 'Customer' && !!stay.AccountId && !!stay.AssignedResourceId && !stay.ActualEndUtc
     && new Date(stay.ActualStartUtc) >= config.enabledSince && new Date(stay.ActualStartUtc) <= now && new Date(stay.ScheduledEndUtc) > now;
 }
-export function createCheckinAutomation({ db, readerFor, messagingFor, now = () => new Date() }) {
+export function createCheckinAutomation({ db, readerFor, messagingFor, welcomeFor, now = () => new Date() }) {
   async function enqueue(hotelId, ids) {
     const unique = [...new Set(ids)];
     if (!unique.length) return;
@@ -31,24 +31,38 @@ export function createCheckinAutomation({ db, readerFor, messagingFor, now = () 
   async function process(config, reader, job) {
     const stay = await reader.reservation(job.reservationId);
     if (!stay) return { status: 'review', reason: 'Reservation missing from the configured accommodation service' };
-    if (stay.State !== 'Started' || stay.ActualEndUtc || new Date(stay.ScheduledEndUtc) <= now()) {
+    const welcomeStage = config.welcomeEnabled && stay.State === 'Confirmed' ? 'confirmation' : 'checkin';
+    const confirmation = config.welcomeEnabled && welcomeStage === 'confirmation';
+    if ((!confirmation && stay.State !== 'Started') || stay.ActualEndUtc || new Date(stay.ScheduledEndUtc) <= now()) {
       // Fresh PMS authority also invalidates pending codes at checkout/cancellation.
-      await db.pmsConversationBinding.deleteMany({ where: { hotelId: config.hotelId, reservationId: stay.Id, verificationMethod: checkinMethod } });
+      await db.pmsConversationBinding.deleteMany({ where: { hotelId: config.hotelId, reservationId: stay.Id, verificationMethod: { in: [checkinMethod, 'verified-stay-contact'] } } });
       await db.guestMessagingInvite.updateMany({ where: { hotelId: config.hotelId, reservationId: stay.Id, revokedAt: null },
         data: { status: 'revoked', revokedAt: now(), revokedBy: 'pms-state-change' } });
+      if (db.guestContactVerification && (['Processed', 'Canceled'].includes(stay.State) || stay.ActualEndUtc || new Date(stay.ScheduledEndUtc) <= now())) {
+        await db.guestContactVerification.updateMany({ where: { hotelId: config.hotelId, reservationId: stay.Id }, data: { revokedAt: now() } });
+        await db.guestWelcome.updateMany({ where: { hotelId: config.hotelId, reservationId: stay.Id }, data: { replyTokenHash: null, expiresAt: now() } });
+      }
       return { status: 'done', reason: 'Reservation is not currently checked in' };
     }
-    if (!eligibleCheckin(stay, config, now())) return { status: 'review', reason: 'Check-in time or room is missing, predates enabling automation, or is not current; review in PMS' };
-    const previous = await db.guestMessagingInvite.findFirst({ where: { hotelId: config.hotelId, reservationId: stay.Id } });
+    if (confirmation) {
+      if (config.confirmationSender !== 'hotelogx') return { status: 'done', reason: 'Booking welcome is managed by PMS or staff' };
+      if (stay.AccountType !== 'Customer' || !stay.AccountId || !config.welcomeSince || !(new Date(stay.CreatedUtc) >= config.welcomeSince)) return { status: 'done', reason: 'Existing reservation predates welcome automation; no backfill sent' };
+    } else if (!eligibleCheckin(stay, config, now())) return { status: 'review', reason: 'Check-in time or room is missing, predates enabling automation, or is not current; review in PMS' };
+    if (config.welcomeEnabled && welcomeStage === 'checkin' && config.checkinSender !== 'hotelogx') return { status: 'done', reason: 'Check-in welcome is managed by PMS or staff' };
+    const previous = !confirmation && await db.guestMessagingInvite.findFirst({ where: { hotelId: config.hotelId, reservationId: stay.Id } });
     if (previous) return { status: ['failed', 'uncertain', 'sending'].includes(previous.status) ? 'review' : 'done', reason: 'Invitation already recorded; review delivery or use manual resend if needed' };
     const customer = await reader.customer(stay.AccountId);
     if (!customer || customer.Id !== stay.AccountId) return { status: 'review', reason: 'Could not match the staying guest profile' };
     const booker = stay.BookerId && stay.BookerId !== stay.AccountId ? await reader.customer(stay.BookerId) : null;
     if (stay.BookerId && stay.BookerId !== stay.AccountId && !booker) return { status: 'review', reason: 'Separate booker could not be checked; confirm contact at Front Office' };
-    const contact = chooseCheckinContact(config, customer, booker);
+    const contact = chooseCheckinContact(config.welcomeEnabled ? { ...config, whatsappTemplate: welcomeStage === 'confirmation' ? config.bookingWelcomeTemplate : config.checkinWelcomeTemplate } : config, customer, booker);
     if (contact.reason) return { status: 'review', reason: contact.reason };
     const actor = await db.user.findFirst({ where: { id: config.updatedBy, hotelId: config.hotelId, role: { in: ['manager', 'front-office'] } } });
     if (!actor) return { status: 'review', reason: 'A manager must re-save automation settings to authorise PMS access' };
+    if (config.welcomeEnabled && welcomeFor) {
+      const result = await welcomeFor().send({ config, reader, stage: welcomeStage, stay, customer, contact, actor });
+      return { status: ['sent', 'already_handled', 'external', 'disabled'].includes(result.status) ? 'done' : 'review', reason: result.reason || `Welcome: ${result.status}` };
+    }
     const result = await messagingFor().issueAutomatic(actor, { reservationId: stay.Id, expectedCustomerId: stay.AccountId, ...contact });
     return { status: ['sent', 'redeemed', 'already_handled'].includes(result.status) ? 'done' : 'review', reason: `Invitation: ${result.status}` };
   }
