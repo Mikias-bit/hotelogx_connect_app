@@ -15,6 +15,9 @@ import {
   StickyNote,
   TriangleAlert,
   UserRound,
+  Maximize2,
+  Minimize2,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import {
@@ -202,8 +205,8 @@ function Thread({ conversation, unreadStartId }: { conversation: Conversation; u
         return (
           <li key={m.id} ref={m.id === unreadStartId ? unreadRef : undefined} className={cn("flex flex-wrap", isGuest ? "justify-start" : "justify-end")}>
             {m.id === unreadStartId && <div className="mb-3 w-full border-t border-pine-300 pt-2 text-center text-xs font-semibold text-pine-600">New messages</div>}
-            <div className={cn("max-w-[85%] sm:max-w-[78%]", isGuest ? "" : "text-right")}>
-              <p className="tnum mb-1 flex items-center gap-1.5 font-mono text-[10.5px] text-ink-4" style={{ justifyContent: isGuest ? "flex-start" : "flex-end" }}>
+            <div className={cn("min-w-0 max-w-[95%] sm:max-w-[88%] xl:max-w-[80%]", isGuest ? "" : "text-right")}>
+              <p className="tnum mb-1 flex flex-wrap items-center gap-1.5 font-mono text-[10.5px] text-ink-4 [overflow-wrap:anywhere]" style={{ justifyContent: isGuest ? "flex-start" : "flex-end" }}>
                 <ChannelMark channel={isGuest ? m.channel : m.author === "ai" ? "ai" : "staff"} />
                 <span className="font-sans font-medium text-ink-3">
                   {isGuest ? conversation.guest.name : m.author === "ai" ? "AI assistant" : (m.staffName ?? "Staff")}
@@ -214,7 +217,7 @@ function Thread({ conversation, unreadStartId }: { conversation: Conversation; u
               </p>
               <div
                 className={cn(
-                  "rounded-[12px] border px-3.5 py-2.5 text-left text-[13.5px] leading-relaxed whitespace-pre-line",
+                  "rounded-[12px] border px-4 py-3 text-left text-[14px] leading-7 whitespace-pre-wrap [overflow-wrap:anywhere]",
                   isGuest
                     ? "rounded-tl-[4px] border-line bg-surface text-ink"
                     : m.author === "ai"
@@ -257,10 +260,12 @@ function GuestContext({
   conversation,
   staffName,
   onCreateTask,
+  section = 'all',
 }: {
   conversation: Conversation;
   staffName: string;
   onCreateTask: () => void;
+  section?: 'all' | 'guest' | 'ai';
 }) {
   const taskIds = conversation.taskIds || [];
   const tasks = useApp((s) => s.tasks.filter((t) => (taskIds.includes(t.id) || t.conversationId === conversation.id)));
@@ -270,6 +275,7 @@ function GuestContext({
 
   return (
     <div className="space-y-5">
+      {section !== 'ai' && <>
       <GuestHandoffList conversationId={conversation.id} />
       <ReservationRequests key={`requests-${conversation.id}`} conversationId={conversation.id} />
       {(conversation.aiStatus === 'escalated' || conversation.aiStatus === 'human-takeover') && (
@@ -316,6 +322,13 @@ function GuestContext({
         </div>
       </div>
 
+      </>}
+      {section !== 'guest' && <>
+      {section === 'ai' && conversation.suggestedReply && <div className="rounded-lg border border-ai/20 bg-ai-bg p-4">
+        <Eyebrow>Suggested reply</Eyebrow>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{conversation.suggestedReply}</p>
+        <p className="mt-3 text-xs text-ink-3">Review and edit this in the reply box before sending.</p>
+      </div>}
       <div>
         <span className="inline-flex items-center gap-1.5">
           <Sparkles className="size-3.5 text-ai" />
@@ -339,7 +352,9 @@ function GuestContext({
       )}
 
       <UpsellRecommendations key={`extras-${conversation.id}`} conversationId={conversation.id} channel={conversation.primaryChannel} />
+      </>}
 
+      {section !== 'ai' && <>
       <div>
         <div className="flex items-center justify-between">
           <Eyebrow>Tasks created</Eyebrow>
@@ -366,6 +381,7 @@ function GuestContext({
           </ul>
         )}
       </div>
+      </>}
 
       <p className="border-t border-line-soft pt-3 text-[10.5px] leading-snug text-ink-4">
         Handled by {conversation.aiStatus === "human-takeover" ? staffName : "the AI"} · {conversation.aiHandledCount} automatic
@@ -499,7 +515,15 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
   const [unreadStartId, setUnreadStartId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
-  useEffect(() => { setFilter(initialFilter); setSelectedId(null); }, [initialFilter]);
+  const [expanded, setExpanded] = useState(false);
+  const [contextPanel, setContextPanel] = useState<'guest' | 'ai' | null>(null);
+  const contextDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = contextDialog.current;
+    if (contextPanel && dialog && !dialog.open) dialog.showModal();
+    if (!contextPanel && dialog?.open) dialog.close();
+  }, [contextPanel]);
+  useEffect(() => { setFilter(initialFilter); setSelectedId(null); setContextPanel(null); setExpanded(false); }, [initialFilter]);
 
   useEffect(() => {
     api.getConversations().then((remoteConvs: any) => {
@@ -538,6 +562,7 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
     const incoming = [...(conversation?.messages || [])].sort((a, b) => messageTime(a) - messageTime(b)).filter(m => m.author === 'guest');
     setUnreadStartId(conversation?.unread ? incoming.slice(-conversation.unread)[0]?.id || null : null);
     setSelectedId(id);
+    setContextPanel(null);
     markRead(id);
   };
 
@@ -651,55 +676,64 @@ export function Inbox({ variant, staffName, initialFilter = "All" }: { variant: 
     );
   }
 
-  /* --------------------------------------------- front office: 3 columns -- */
+  /* Front Office: conversation first, supporting context on demand. */
   return (
-    <div className="grid min-h-0 gap-4 lg:h-[calc(100dvh-9.5rem)] lg:grid-cols-[290px_1fr_300px]">
-      <div className="flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-surface">
-        <div className="border-b border-line px-3 py-2.5">
-          <FilterBar active={filter} onChange={setFilter} counts={counts} />
-          <p className="px-3 py-2 text-xs text-ink-3">Unread first | newest activity first</p>
-          {filter === 'Escalated' && <GuestHandoffList unlinkedOnly />}
+    <div className={cn("grid h-[calc(100dvh-5.5rem)] min-h-0 min-w-0 gap-3", expanded && selected ? "grid-cols-1" : "lg:grid-cols-[280px_minmax(0,1fr)]")}>
+      <section aria-label="Conversation list" className={cn("min-h-0 min-w-0 flex-col overflow-hidden rounded-card border border-line bg-surface", selected ? (expanded ? "hidden" : "hidden lg:flex") : "flex")}>
+        <div className="shrink-0 border-b border-line px-3 py-3">
+          <label className="block text-xs font-medium text-ink-3">Conversations
+            <select className="mt-2 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink" value={filter} onChange={e => setFilter(e.target.value as Filter)}>
+              {filters.map(f => <option key={f} value={f}>{f} ({counts[f] || 0})</option>)}
+            </select>
+          </label>
+          <p className="mt-2 text-[11px] text-ink-4">Unread first ? newest activity first</p>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
+          {filter === 'Escalated' && <GuestHandoffList unlinkedOnly />}
           {list.length === 0 && <Empty title="Nothing here" hint="Try another filter." />}
-          {list.map((c) => (
-            <ListItem key={c.id} conversation={c} active={c.id === selectedId} onSelect={() => select(c.id)} />
-          ))}
+          {list.map(c => <ListItem key={c.id} conversation={c} active={c.id === selectedId} onSelect={() => select(c.id)} />)}
         </div>
-      </div>
-
+      </section>
       {selected ? (
-        <div className="flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-paper/40">
-          <div className="flex items-start justify-between gap-3 border-b border-line bg-surface px-4 py-3">
-            <div className="min-w-0">
-              <p className="truncate text-[14px] font-semibold text-ink">{selected.subject}</p>
-              <p className="tnum mt-0.5 flex flex-wrap items-center gap-2 font-mono text-[11px] text-ink-4">
-                <ChannelMark channel={selected.primaryChannel} withLabel />
-                <span className="font-sans">· {selected.guest?.name ?? "Guest"}</span>
-                {selected.guest?.room && <span>· room {selected.guest.room}</span>}
-                {selected.guest?.reservation?.number && <span>· {selected.guest.reservation.number}</span>}
-              </p>
+        <section aria-label="Selected conversation" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card border border-line bg-paper/40">
+          <div className="shrink-0 border-b border-line bg-surface px-4 py-3">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="quiet" icon={ArrowLeft} className="lg:hidden" onClick={() => { setSelectedId(null); setExpanded(false); }}>Back to conversations</Button>
+              <Button size="sm" variant="quiet" icon={expanded ? Minimize2 : Maximize2} className="hidden lg:inline-flex" aria-pressed={expanded} onClick={() => { setExpanded(!expanded); setContextPanel(null); }}>{expanded ? 'Show conversation list' : 'Expand conversation'}</Button>
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" icon={UserRound} aria-haspopup="dialog" onClick={() => setContextPanel('guest')}>Guest details{selected.guestFollowUpPending || selected.reservationRequestPending ? ' ? Review needed' : ''}</Button>
+                <Button size="sm" variant="outline" icon={Sparkles} aria-haspopup="dialog" onClick={() => setContextPanel('ai')}>AI suggestions</Button>
+              </div>
             </div>
-            <Badge tone={statusTone(selected.aiStatus)} dot>
-              {aiStatusLabel[selected.aiStatus]}
-            </Badge>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <h2 className="min-w-0 flex-1 text-base font-semibold text-ink [overflow-wrap:anywhere]">{selected.subject || 'Guest conversation'}</h2>
+              <Badge tone={statusTone(selected.aiStatus)} dot>{aiStatusLabel[selected.aiStatus]}</Badge>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3">
+              <ChannelMark channel={selected.primaryChannel} withLabel />
+              <span>{selected.guest?.name || 'Guest'}</span>
+              {selected.guest?.room && <span>Room {selected.guest.room}</span>}
+              {selected.guest?.reservation?.arrival && <span>{selected.guest.reservation.arrival} ? {selected.guest.reservation.departure || 'Departure not available'}</span>}
+              {selected.guest?.reservation?.number && <span>Reservation {selected.guest.reservation.number}</span>}
+            </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <Thread key={selected.id} conversation={selected} unreadStartId={unreadStartId} />
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:px-6 sm:py-5">
+            <div className="mx-auto w-full max-w-[1100px]"><Thread key={selected.id} conversation={selected} unreadStartId={unreadStartId} /></div>
           </div>
-          <Composer key={selected.id} conversation={selected} staffName={staffName} onCreateTask={() => setComposerOpen(true)} compact />
+          <div className="max-h-[45dvh] shrink-0 overflow-y-auto"><Composer key={selected.id} conversation={selected} staffName={staffName} onCreateTask={() => setComposerOpen(true)} compact /></div>
+        </section>
+      ) : <div className="hidden lg:block"><Empty title="Select a conversation" hint="Choose a message to read and reply. Guest details and AI suggestions are available when you need them." /></div>}
+      <dialog ref={contextDialog} aria-labelledby="conversation-context-title" onCancel={() => setContextPanel(null)} onClose={() => setContextPanel(null)} onClick={e => { if (e.target === e.currentTarget) setContextPanel(null); }} className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full max-w-[480px] border-l border-line bg-surface p-0 text-ink shadow-xl backdrop:bg-black/25">
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-4">
+            <h2 id="conversation-context-title" className="font-semibold">{contextPanel === 'ai' ? 'AI suggestions' : 'Guest details & tasks'}</h2>
+            <button type="button" autoFocus aria-label="Close conversation details" className="rounded-lg p-2 hover:bg-paper" onClick={() => setContextPanel(null)}><X className="size-5" /></button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-5 [overflow-wrap:anywhere]">
+            {selected && contextPanel && <GuestContext key={selected.id} section={contextPanel} conversation={selected} staffName={staffName} onCreateTask={() => { setContextPanel(null); setComposerOpen(true); }} />}
+          </div>
         </div>
-      ) : (
-        <Empty title="Select a conversation" hint="The AI keeps answering while you read." />
-      )}
-
-      <aside className="min-h-0 overflow-y-auto rounded-card border border-line bg-surface p-4">
-        {selected ? (
-          <GuestContext conversation={selected} staffName={staffName} onCreateTask={() => setComposerOpen(true)} />
-        ) : (
-          <p className="text-[12.5px] text-ink-4">Guest details, reservation and AI suggestions appear here.</p>
-        )}
-      </aside>
+      </dialog>
       {taskComposer}
     </div>
   );

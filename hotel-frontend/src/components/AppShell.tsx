@@ -88,6 +88,9 @@ export function AppShell({
   const hotel = useApp((s) => s.hotelProfile);
   const [mounted, setMounted] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const conversationPage = pathname.startsWith('/front-office/conversations');
+  const [expandedNav, setExpandedNav] = useState(false);
+  const compactNav = conversationPage && !expandedNav;
   const [drawer, setDrawer] = useState<null | "activity" | "whatsapp">(null);
   const currentHotelId = (user as any)?.hotelId || hotel.name || "the-taj-hotel-mydnh7";
   useRealtimeSync(currentHotelId);
@@ -108,6 +111,7 @@ export function AppShell({
 
   useEffect(() => {
     setMobileNav(false);
+    setExpandedNav(false);
   }, [pathname]);
 
   if (!mounted || !user) {
@@ -136,6 +140,8 @@ export function AppShell({
           <Link
             key={item.to}
             to={item.to}
+            title={item.label}
+            aria-label={item.label}
             className={cn(
               "relative flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-[13.5px] transition-colors",
               active ? "bg-pine-50 font-medium text-pine-700" : "text-ink-2 hover:bg-paper-2",
@@ -143,11 +149,12 @@ export function AppShell({
           >
             {active && <span className="absolute top-1/2 -left-2.5 h-4 w-[3px] -translate-y-1/2 rounded-full bg-pine-600" />}
             <Icon className={cn("size-4 shrink-0", active ? "text-pine-600" : "text-ink-4")} />
-            <span className="flex-1">{item.label}</span>
+            <span className={cn("flex-1", compactNav && "lg:hidden")}>{item.label}</span>
             {counter && (
               <span
                 className={cn(
                   "tnum rounded-full px-1.5 py-px font-mono text-[10.5px]",
+                  compactNav && "lg:absolute lg:-right-1 lg:-top-1",
                   counter.tone === "urgent" ? "bg-urgent-bg text-urgent" : "bg-paper-2 text-ink-3",
                 )}
               >
@@ -164,23 +171,26 @@ export function AppShell({
     <div className="grain min-h-dvh bg-paper">
       <div className="flex">
         {/* sidebar */}
-        <aside className="sticky top-0 hidden h-dvh w-[236px] shrink-0 flex-col border-r border-line bg-surface/70 px-5 py-5 lg:flex">
-          <Link to={nav[0].to} className="flex items-center gap-2.5">
+        <aside className={cn("sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line bg-surface/70 py-5 lg:flex", compactNav ? "w-[72px] px-3" : "w-[236px] px-5")}>
+          <Link to={nav[0].to} aria-label="Hotelogx dashboard" className="flex items-center gap-2.5">
             <Logo />
-            <Wordmark className="text-[17px]" />
+            {!compactNav && <Wordmark className="text-[17px]" />}
           </Link>
 
-          <div className="mt-7 flex-1">{navList}</div>
+          {conversationPage && <button type="button" aria-label={compactNav ? 'Expand navigation' : 'Collapse navigation'} title={compactNav ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={!compactNav} onClick={() => setExpandedNav(!expandedNav)} className="mt-4 flex items-center justify-center gap-2 rounded-lg p-2 text-sm text-ink-3 hover:bg-paper-2"><Menu className="size-4" />{!compactNav && 'Collapse menu'}</button>}
+          <div className="mt-7 min-h-0 flex-1 overflow-y-auto">{navList}</div>
 
           <div className="space-y-2">
             <button
               onClick={() => setDrawer("whatsapp")}
+              title="WhatsApp ops layer"
+              aria-label="WhatsApp ops layer"
               className="flex w-full items-center gap-2 rounded-[9px] border border-line bg-paper px-2.5 py-2 text-left text-[12.5px] text-ink-2 transition-colors hover:border-ink-4"
             >
               <MessageSquare className="size-3.5 text-wa" />
-              WhatsApp ops layer
+              {!compactNav && 'WhatsApp ops layer'}
             </button>
-            <p className="flex items-start gap-1.5 px-1 text-[10.5px] leading-snug text-ink-4">
+            <p className={cn("flex items-start gap-1.5 px-1 text-[10.5px] leading-snug text-ink-4", compactNav && "hidden")}>
               <Sparkles className="mt-px size-3 shrink-0 text-ai" />
               The AI is watching every channel. You only see what needs you.
             </p>
