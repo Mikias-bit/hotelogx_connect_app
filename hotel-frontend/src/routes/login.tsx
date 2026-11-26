@@ -1,16 +1,14 @@
-import { useRef, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, ArrowRight, Eye, EyeOff, Sparkles, Wand2 } from "lucide-react";
-import { Logo, Wordmark } from "@/components/Logo";
-import { Button } from "@/components/ui";
-import { roleHome, signIn } from "@/lib/session";
-import { startOnboarding, toast } from "@/lib/store";
-import { api } from "@/lib/api";
+import { useEffect, useState } from 'react';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { ArrowRight, Sparkles } from 'lucide-react';
+import { Logo, Wordmark } from '@/components/Logo';
+import { Button } from '@/components/ui';
+import { roleHome, signIn } from '@/lib/session';
+import { initBackendSync, resetStoreState, store } from '@/lib/store';
+import { api } from '@/lib/api';
+import { acceptHotelInvite, exchangeIdentitySession, hasIdentityCallback, identityCallback, identityEnabled, identityLogin } from '@/lib/identity';
 
-export const Route = createFileRoute("/login")({
-  component: Login,
-});
-
+export const Route = createFileRoute('/login')({ component: Login });
 const steps = [
   {
     title: "The guest writes wherever they already are",
@@ -30,173 +28,61 @@ const steps = [
   },
 ];
 
-interface DisplayUser {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  title: string;
-  initials: string;
-}
-
-const RECENT_HOTEL_KEY = "hotelogx.recent_hotel_meta.v1";
 
 function Login() {
   const navigate = useNavigate();
-  const [authMode, setAuthMode] = useState<"signin" | "register">("signin");
-  
-  // Safe display-only cache from active/recent session (strictly non-sensitive metadata)
-  const [recentHotel, setRecentHotel] = useState<{ id?: string; name?: string; users?: DisplayUser[] } | null>(() => {
-    if (typeof window === "undefined") return null;
+  const [mode, setMode] = useState<'signin' | 'invite' | 'request' | 'recovery'>('signin');
+  const [provider, setProvider] = useState(identityEnabled ? 'netlify' : 'existing');
+  const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [confirm, setConfirm] = useState('');
+  const [name, setName] = useState(''), [hotelName, setHotelName] = useState('');
+  const [inviteToken, setInviteToken] = useState('');
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const [callbackPending, setCallbackPending] = useState(false);
+  async function finish(result: { token: string; user: any; onboardingRequired?: boolean }, source: string) {
+    resetStoreState();
+    localStorage.setItem('token', result.token);
+    localStorage.setItem('hotelogx.authProvider', source);
+    await signIn(result.user.id, result.user);
+    if (!await initBackendSync({ force: true })) throw new Error('Your account is verified, but the hotel profile could not be loaded. Please sign in again to retry.');
+    const needsSetup = result.user.role === 'manager' && !store.state.onboarding.complete;
+    navigate({ to: needsSetup ? '/onboarding' : roleHome[result.user.role as keyof typeof roleHome] || '/manager', replace: true });
+  }
+  useEffect(() => {
+    if (!hasIdentityCallback()) return;
+    setCallbackPending(true);
+    identityCallback().then(async result => {
+      if (result?.type === 'invite' && result.token) { setInviteToken(result.token); setMode('invite'); setPassword(''); }
+      else if (result?.type === 'recovery') { setMode('recovery'); setPassword(''); }
+      else if (result?.user) await finish(await exchangeIdentitySession(), 'netlify');
+    }).catch(() => setError('This invitation or sign-in link could not be verified. Please reopen the latest email or ask for a new invitation.'))
+      .finally(() => setCallbackPending(false));
+  }, []);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setNotice(''); setBusy(true);
     try {
-      const raw = window.localStorage.getItem(RECENT_HOTEL_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
-          return parsed;
+      if (mode === 'request') {
+        if (!await api.requestAccess({ name, hotelName, email })) throw new Error('Could not record your request. Please try again.');
+        setNotice('Your request has been recorded for review. An invitation is required before you can set up a hotel.');
+        return;
+      }
+      if (mode === 'invite' || mode === 'recovery') {
+        if (password.length < 12 || password !== confirm) throw new Error('Use at least 12 characters and enter the same password twice.');
+        if (mode === 'invite') await finish(await acceptHotelInvite(inviteToken, password), 'netlify');
+        else {
+          await (await import('@netlify/identity')).updateUser({ password });
+          await finish(await exchangeIdentitySession(), 'netlify');
         }
+      } else if (provider === 'netlify') await finish(await identityLogin(email.trim(), password), 'netlify');
+      else {
+        const result = await api.login({ email: email.trim(), password });
+        if (!result) throw new Error('Invalid email or password.');
+        await finish(result, 'existing');
       }
-    } catch {}
-    return null;
-  });
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const passwordInputRef = useRef<HTMLInputElement>(null);
-
-  // Registration state
-  const [regHotelName, setRegHotelName] = useState("");
-  const [regManagerName, setRegManagerName] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-
-  const submit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!email.trim()) {
-      setError("Please enter your work email.");
-      return;
-    }
-    if (!password) {
-      setError("Please enter your password.");
-      return;
-    }
-    setError(null);
-    setBusy(true);
-
-    try {
-      const res = await api.login({ email: email.trim(), password });
-      if (res && res.token && res.user) {
-        window.localStorage.setItem("token", res.token);
-        await signIn(res.user.id, res.user);
-
-        // Fetch authorized tenant staff list to update display-only cache securely
-        try {
-          const staffList = await api.getUsers();
-          if (Array.isArray(staffList) && staffList.length > 0) {
-            const displayUsers: DisplayUser[] = staffList.map((u: any) => ({
-              id: u.id,
-              name: u.name,
-              email: u.email,
-              role: u.role,
-              title: u.title || "Staff",
-              initials: u.initials || u.name?.slice(0, 2).toUpperCase() || "ST",
-            }));
-            const updatedRecent = {
-              id: res.user.hotelId,
-              name: res.user.hotelName || recentHotel?.name || "Hotel Workspace",
-              users: displayUsers,
-            };
-            window.localStorage.setItem(RECENT_HOTEL_KEY, JSON.stringify(updatedRecent));
-            setRecentHotel(updatedRecent);
-          } else {
-            // Keep at least current authenticated user in display cache
-            const singleUser: DisplayUser = {
-              id: res.user.id,
-              name: res.user.name,
-              email: res.user.email,
-              role: res.user.role,
-              title: res.user.title || "Staff",
-              initials: res.user.initials || "ST",
-            };
-            const updatedRecent = {
-              id: res.user.hotelId,
-              name: res.user.hotelName || recentHotel?.name || "Hotel Workspace",
-              users: [singleUser],
-            };
-            window.localStorage.setItem(RECENT_HOTEL_KEY, JSON.stringify(updatedRecent));
-            setRecentHotel(updatedRecent);
-          }
-        } catch {}
-
-        toast("Signed in successfully", "good", `Welcome, ${res.user.name}`);
-        setTimeout(() => navigate({ to: roleHome[res.user.role as keyof typeof roleHome] || "/manager" }), 150);
-      } else {
-        const msg = (res as any)?.message || "Invalid email or password.";
-        setError(msg);
-        toast("Sign in failed", "urgent", msg);
-        setBusy(false);
-      }
-    } catch {
-      setError("Invalid email or password.");
-      toast("Sign in failed", "urgent", "Invalid email or password");
-      setBusy(false);
-    }
-  };
-
-  // Set up a new hotel: opens the onboarding wizard directly
-  const firstLogin = () => {
-    startOnboarding();
-    navigate({ to: "/onboarding" });
-  };
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!regHotelName.trim() || !regManagerName.trim() || !regEmail.trim() || !regPassword) {
-      setError("All fields are required to register your hotel.");
-      return;
-    }
-    if (regPassword.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    setError(null);
-    setBusy(true);
-
-    try {
-      const res = await api.registerHotel({
-        hotelName: regHotelName.trim(),
-        managerName: regManagerName.trim(),
-        email: regEmail.trim(),
-        password: regPassword,
-      });
-
-      if (res && res.token && res.user) {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("token", res.token);
-        }
-        startOnboarding();
-        await signIn(res.user.id, res.user);
-        toast("Hotel registered successfully", "good", `Welcome, ${res.user.name}`);
-        setTimeout(() => navigate({ to: "/onboarding" }), 150);
-      } else {
-        const msg = (res as any)?.message || "Registration failed. Please verify your details.";
-        setError(msg);
-        toast("Registration failed", "urgent", msg);
-        setBusy(false);
-      }
-    } catch (err: any) {
-      const msg = err?.message || "Failed to connect to the server. Please try again.";
-      setError(msg);
-      toast("Registration failed", "urgent", msg);
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="grain grid min-h-dvh bg-paper lg:grid-cols-[1.05fr_1fr]">
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not complete sign-in. Please try again.'); }
+    finally { setBusy(false); }
+  }
+  const field = 'mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink';
+  return <div className="grain grid min-h-dvh bg-paper lg:grid-cols-[1.05fr_1fr]">
       {/* left — positioning */}
       <section className="relative hidden flex-col justify-between overflow-hidden bg-pine-900 px-10 py-12 text-pine-100 lg:flex xl:px-14">
         <span
@@ -245,188 +131,30 @@ function Login() {
         </p>
       </section>
 
-      {/* right — sign in / register */}
-      <section className="flex items-center justify-center px-5 py-10 sm:px-10">
-        <div className="w-full max-w-[400px]">
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <Logo />
-            <Wordmark className="text-[18px]" />
-          </div>
 
-          {authMode === "signin" ? (
-            <>
-              <p className="text-[11px] font-semibold tracking-[0.14em] text-ink-4 uppercase">Sign in</p>
-              <h2 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">Workspace Sign In</h2>
-              <p className="mt-1.5 text-[13px] text-ink-3">
-                Sign in to your hotel operations workspace. Your assigned role determines available portals.
-              </p>
-
-              <form onSubmit={submit} className="mt-6 space-y-2.5">
-                {error && (
-                  <div className="flex items-center gap-2 rounded-[9px] border border-urgent-line bg-urgent-bg/80 px-3 py-2.5 text-[12.5px] font-medium text-urgent">
-                    <AlertCircle className="size-4 shrink-0" />
-                    <span className="flex-1">{error}</span>
-                  </div>
-                )}
-
-                <label className="block">
-                  <span className="text-[11.5px] font-medium text-ink-3">Work email</span>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (error) setError(null);
-                    }}
-                    placeholder="manager@yourhotel.com"
-                    className="mt-1 w-full rounded-[9px] border border-line bg-surface px-3 py-2 font-mono text-[12.5px] text-ink outline-none focus:border-pine-400"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[11.5px] font-medium text-ink-3">Password</span>
-                  <div className="relative mt-1">
-                    <input
-                      ref={passwordInputRef}
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        if (error) setError(null);
-                      }}
-                      placeholder="••••••••••"
-                      className="w-full rounded-[9px] border border-line bg-surface px-3 py-2 pr-9 text-[13px] text-ink outline-none focus:border-pine-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      tabIndex={-1}
-                      className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-ink-4 transition-colors hover:text-ink"
-                      title={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
-                </label>
-
-                <Button type="submit" className="mt-5 w-full" disabled={busy || !email.trim() || !password} icon={ArrowRight}>
-                  {busy ? "Signing in…" : "Sign In"}
-                </Button>
-              </form>
-
-              <div className="mt-5 border-t border-line-soft pt-4">
-                <p className="text-[12.5px] font-medium text-ink">New hotel?</p>
-                <p className="mt-0.5 text-[11.5px] leading-snug text-ink-4">
-                  Start from nothing: the onboarding wizard walks the manager through the profile, the PMS, email, both WhatsApp
-                  numbers, the knowledge base, the team and the AI rules.
-                </p>
-                <div className="mt-2.5">
-                  <Button variant="outline" size="sm" icon={Wand2} onClick={firstLogin} disabled={busy}>
-                    Set up a new hotel
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-[11px] font-semibold tracking-[0.14em] text-ink-4 uppercase">New Registration</p>
-              <h2 className="mt-1.5 font-display text-[26px] leading-tight font-medium text-ink">Register Your Hotel</h2>
-              <p className="mt-1.5 text-[13px] text-ink-3">
-                Create a dedicated account for your hotel property to begin setup.
-              </p>
-
-              <form onSubmit={handleRegister} className="mt-6 space-y-3">
-                {error && (
-                  <div className="flex items-center gap-2 rounded-[9px] border border-urgent-line bg-urgent-bg/80 px-3 py-2.5 text-[12.5px] font-medium text-urgent">
-                    <AlertCircle className="size-4 shrink-0" />
-                    <span className="flex-1">{error}</span>
-                  </div>
-                )}
-
-                <label className="block">
-                  <span className="text-[11.5px] font-medium text-ink-3">Hotel property name</span>
-                  <input
-                    type="text"
-                    required
-                    value={regHotelName}
-                    onChange={(e) => {
-                      setRegHotelName(e.target.value);
-                      if (error) setError(null);
-                    }}
-                    placeholder="e.g. Grand Horizon Hotel"
-                    className="mt-1 w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-pine-400"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-[11.5px] font-medium text-ink-3">General Manager name</span>
-                  <input
-                    type="text"
-                    required
-                    value={regManagerName}
-                    onChange={(e) => {
-                      setRegManagerName(e.target.value);
-                      if (error) setError(null);
-                    }}
-                    placeholder="e.g. Sarah Jenkins"
-                    className="mt-1 w-full rounded-[9px] border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-pine-400"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-[11.5px] font-medium text-ink-3">Manager work email</span>
-                  <input
-                    type="email"
-                    required
-                    value={regEmail}
-                    onChange={(e) => {
-                      setRegEmail(e.target.value);
-                      if (error) setError(null);
-                    }}
-                    placeholder="manager@yourhotel.com"
-                    className="mt-1 w-full rounded-[9px] border border-line bg-surface px-3 py-2 font-mono text-[12.5px] text-ink outline-none focus:border-pine-400"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-[11.5px] font-medium text-ink-3">Password (min 6 characters)</span>
-                  <input
-                    type="password"
-                    required
-                    value={regPassword}
-                    onChange={(e) => {
-                      setRegPassword(e.target.value);
-                      if (error) setError(null);
-                    }}
-                    placeholder="••••••••••••"
-                    className="mt-1 w-full rounded-[9px] border border-line bg-surface px-3 py-2 font-mono text-[13px] text-ink outline-none focus:border-pine-400"
-                  />
-                </label>
-
-                <Button type="submit" className="mt-5 w-full" disabled={busy} icon={ArrowRight}>
-                  {busy ? "Registering hotel…" : "Register & Start Setup"}
-                </Button>
-              </form>
-
-              <div className="mt-5 border-t border-line-soft pt-4">
-                <p className="text-[12.5px] font-medium text-ink">Already have an account?</p>
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  className="mt-1"
-                  onClick={() => {
-                    setAuthMode("signin");
-                    setError(null);
-                  }}
-                  disabled={busy}
-                >
-                  Return to sign in
-                </Button>
-              </div>
-            </>
-          )}
+    <section className="flex items-center justify-center px-5 py-10 sm:px-10">
+      <div className="w-full max-w-[420px]">
+        <div className="mb-8 flex items-center gap-2 lg:hidden"><Logo /><Wordmark /></div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-ink-4">Invitation-only access</p>
+        <h1 className="mt-2 font-display text-3xl">{mode === 'invite' ? 'Accept your hotel invitation' : mode === 'request' ? 'Request access' : mode === 'recovery' ? 'Set a new password' : 'Sign in to Hotelogx One'}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-ink-3">{mode === 'invite' ? 'Choose a password. We will connect your verified invitation to the hotel approved for you, then open its setup wizard.' : mode === 'request' ? 'Tell us about your hotel. Requesting access does not create an account or workspace.' : 'Your hotel and role are assigned by an administrator.'}</p>
+        {error && <p role="alert" className="mt-4 rounded-lg border border-urgent-line bg-urgent-bg p-3 text-sm text-urgent">{error}</p>}
+        {notice && <p role="status" className="mt-4 rounded-lg border border-line p-3 text-sm">{notice}</p>}
+        {callbackPending ? <p role="status" className="mt-6">Checking your invitation?</p> : <form onSubmit={submit} className="mt-6 space-y-4">
+          {mode === 'signin' && identityEnabled && <label className="block text-sm">Account type<select className={field} value={provider} onChange={e => { setProvider(e.target.value); setPassword(''); setError(''); }}><option value="netlify">Invited hotel administrator (Netlify)</option><option value="existing">Existing hotel or staff account</option></select></label>}
+          {mode === 'request' && <>
+            <label className="block text-sm">Your name<input className={field} required maxLength={120} autoComplete="name" value={name} onChange={e => setName(e.target.value)} /></label>
+            <label className="block text-sm">Hotel name<input className={field} required maxLength={200} autoComplete="organization" value={hotelName} onChange={e => setHotelName(e.target.value)} /></label>
+          </>}
+          {(mode === 'signin' || mode === 'request') && <label className="block text-sm">Work email<input className={field} required type="email" maxLength={254} autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} /></label>}
+          {mode !== 'request' && <label className="block text-sm">{mode === 'signin' ? 'Password' : 'New password (at least 12 characters)'}<input className={field} required type="password" minLength={mode === 'signin' ? undefined : 12} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>}
+          {(mode === 'invite' || mode === 'recovery') && <label className="block text-sm">Confirm password<input className={field} required type="password" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} /></label>}
+          <Button type="submit" className="w-full" icon={ArrowRight} disabled={busy || !!notice}>{busy ? 'Please wait?' : mode === 'request' ? 'Submit access request' : mode === 'invite' ? 'Accept invitation & continue' : mode === 'recovery' ? 'Save password & continue' : 'Sign in'}</Button>
+        </form>}
+        <div className="mt-6 border-t border-line pt-4 text-sm">
+          {mode === 'signin' ? <><p className="text-ink-3">New hotel? Access is approved individually.</p><Button variant="quiet" disabled={busy || callbackPending} onClick={() => { setMode('request'); setError(''); setNotice(''); setPassword(''); }}>Request access</Button></> : <Button variant="quiet" disabled={busy || callbackPending} onClick={() => { setMode('signin'); setProvider(identityEnabled || inviteToken ? 'netlify' : 'existing'); setError(''); setNotice(''); setPassword(''); }}>Back to sign in</Button>}
         </div>
-      </section>
-    </div>
-  );
+      </div>
+    </section>
+  </div>;
 }
-

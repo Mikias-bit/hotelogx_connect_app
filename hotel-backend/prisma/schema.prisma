@@ -110,6 +110,8 @@ model User {
   name         String
   email        String   @unique
   passwordHash String   @default("")
+  netlifyIdentityId String? @unique
+  netlifyIdentityIssuer String?
   role         String
   title        String   @default("Staff")
   phone        String   @default("")
@@ -1280,4 +1282,28 @@ model ShiftHandover {
   updatedAt DateTime @updatedAt
   @@index([hotelId, shiftDate])
   @@index([hotelId, status, targetDate])
+}
+
+model HotelOnboardingInvite {
+  id String @id @default(uuid())
+  hotelId String
+  email String @unique
+  name String
+  role String @default("manager")
+  approvedBy String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  acceptedAt DateTime?
+  identityId String? @unique
+  revokedAt DateTime?
+  @@index([hotelId])
+}
+
+model HotelAccessRequest {
+  id String @id @default(uuid())
+  email String @unique
+  name String
+  hotelName String
+  status String @default("pending")
+  createdAt DateTime @default(now())
 }

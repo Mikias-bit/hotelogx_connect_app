@@ -2,6 +2,8 @@
   command = "vite build"
   publish = "dist/client"
 [build.environment]
+  NODE_VERSION = "22"
+  VITE_NETLIFY_IDENTITY_ENABLED = "true"
   VITE_META_APP_ID = "1018045903953347"
   VITE_META_CONFIG_ID = "1587875666080875"
   VITE_META_GRAPH_VERSION = "v25.0"

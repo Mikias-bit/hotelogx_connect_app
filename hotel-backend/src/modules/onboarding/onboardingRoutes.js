@@ -9,8 +9,13 @@ import {
   handleEmailDetect,
 } from './onboardingController.js';
 import { authenticate } from '../../middlewares/auth.js';
+import { errorResponse } from '../../utils/response.js';
 
 const router = Router();
+router.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  return authenticate(req, res, () => req.user.role === 'manager' ? next() : errorResponse(res, 'Only a hotel manager can change onboarding settings.', 403));
+});
 
 router.get('/status', authenticate, getOnboardingStatus);
 router.get('/profile', authenticate, getHotelProfile);

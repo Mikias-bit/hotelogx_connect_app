@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { Check, Eye, EyeOff, KeyRound, Loader2, Lock, Mail, ShieldCheck, User } from "lucide-react";
+import { Check, KeyRound, Loader2 } from "lucide-react";
 import { toast, updateHotelProfile, useApp } from "@/lib/store";
-import { api } from "@/lib/api";
-import { signIn, useCurrentUser } from "@/lib/session";
+import { useCurrentUser } from "@/lib/session";
 import type { HotelProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button, Card, Eyebrow, SectionTitle } from "./ui";
@@ -31,10 +30,6 @@ export function OnboardingProfileStep({ onDraftChange }: { onDraftChange?: (draf
   const currentUser = useCurrentUser();
 
   const [draft, setDraft] = useState<HotelProfile>(profile);
-  const [managerName, setManagerName] = useState(currentUser?.name || "");
-  const [managerEmail, setManagerEmail] = useState(currentUser?.email || "");
-  const [managerPassword, setManagerPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -50,54 +45,13 @@ export function OnboardingProfileStep({ onDraftChange }: { onDraftChange?: (draf
   const handleSave = async () => {
     setSaving(true);
     try {
-      // If user is not yet authenticated, register and create the hotel tenant
-      if (!window.localStorage.getItem("token") || !currentUser) {
-        if (currentUser || !managerPassword.trim()) {
-          toast("Manager sign-in required", "urgent", "For an existing hotel, sign in on the login page. For a new hotel, enter the manager account details below.");
-          return;
-        }
-        if (!managerEmail.trim() || !managerPassword.trim()) {
-          toast("Manager credentials required", "urgent", "Please provide a Manager Email and Password to create your hotel account");
-          setSaving(false);
-          return;
-        }
-        if (managerPassword.length < 6) {
-          toast("Password too short", "urgent", "Password must be at least 6 characters");
-          setSaving(false);
-          return;
-        }
-
-        const regRes = await api.registerHotel({
-          hotelName: draft.name.trim() || "My Hotel",
-          managerName: managerName.trim() || "General Manager",
-          email: managerEmail.trim(),
-          password: managerPassword,
-          phone: draft.phone.trim() || undefined,
-        });
-
-        if (regRes && regRes.token && regRes.user) {
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("token", regRes.token);
-          }
-          await signIn(regRes.user.id, regRes.user);
-
-          const updatedDraft: HotelProfile = {
-            ...draft,
-            id: regRes.user.hotelId || regRes.hotel?.id,
-            name: draft.name || regRes.hotel?.name || "My Hotel",
-          };
-          setDraft(updatedDraft);
-          if (!await updateHotelProfile(updatedDraft)) return;
-          toast("Hotel account created & profile saved", "good", `Welcome, ${regRes.user.name}`);
-          setSavedSuccess(true);
-        } else {
-          toast("Registration error", "urgent", (regRes as any)?.message || "Could not create hotel workspace");
-        }
-      } else {
-        if (!await updateHotelProfile(draft)) return;
-        toast("Hotel profile saved", "good", "The AI uses these details when answering guests");
-        setSavedSuccess(true);
+      if (!window.localStorage.getItem('token') || currentUser?.role !== 'manager') {
+        toast('Manager sign-in required', 'urgent', 'Accept your hotel invitation or sign in to your existing account.');
+        return;
       }
+      if (!await updateHotelProfile(draft)) return;
+      toast('Hotel profile saved', 'good', 'The AI uses these details when answering guests');
+      setSavedSuccess(true);
     } catch (err: any) {
       toast("Could not save profile", "urgent", err?.message || "Check your connection and try again");
     } finally {
@@ -110,82 +64,9 @@ export function OnboardingProfileStep({ onDraftChange }: { onDraftChange?: (draf
       <p className="text-[12px] text-ink-3">
         Already created your hotel? <a href="/login" className="underline">Sign in to your existing manager account</a> before saving.
       </p>
-      {/* Manager Account Section */}
       <Card>
-        <div className="flex items-center gap-2">
-          <KeyRound className="size-4 text-pine-600" />
-          <SectionTitle
-            title="Manager Account & Access"
-            hint={currentUser ? "You are signed in as the authorized administrator for this property." : "Create your administrator account to secure your hotel workspace and connect PMS/Email/WhatsApp."}
-          />
-        </div>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <label className="block">
-            <span className="text-[11.5px] font-medium text-ink-3">Manager full name *</span>
-            <div className="mt-1 flex items-center gap-2 rounded-[9px] border border-line bg-surface px-2.5 focus-within:border-pine-400">
-              <User className="size-3.5 shrink-0 text-ink-4" />
-              <input
-                type="text"
-                value={managerName}
-                onChange={(e) => {
-                  setManagerName(e.target.value);
-                  setSavedSuccess(false);
-                }}
-                placeholder="e.g. Sarah Jenkins"
-                className="w-full bg-transparent py-2 text-[12.5px] text-ink outline-none"
-              />
-            </div>
-          </label>
-
-          <label className="block">
-            <span className="text-[11.5px] font-medium text-ink-3">Manager work email *</span>
-            <div className="mt-1 flex items-center gap-2 rounded-[9px] border border-line bg-surface px-2.5 focus-within:border-pine-400">
-              <Mail className="size-3.5 shrink-0 text-ink-4" />
-              <input
-                type="email"
-                value={managerEmail}
-                onChange={(e) => {
-                  setManagerEmail(e.target.value);
-                  setSavedSuccess(false);
-                }}
-                placeholder="manager@yourhotel.com"
-                className="w-full bg-transparent py-2 font-mono text-[12.5px] text-ink outline-none"
-              />
-            </div>
-          </label>
-
-          <label className="block">
-            <span className="text-[11.5px] font-medium text-ink-3">
-              {currentUser ? "Password (set)" : "Password (min 6 chars) *"}
-            </span>
-            <div className="mt-1 flex items-center gap-2 rounded-[9px] border border-line bg-surface px-2.5 focus-within:border-pine-400">
-              <Lock className="size-3.5 shrink-0 text-ink-4" />
-              <input
-                type={showPassword ? "text" : "password"}
-                value={managerPassword}
-                onChange={(e) => {
-                  setManagerPassword(e.target.value);
-                  setSavedSuccess(false);
-                }}
-                placeholder={currentUser ? "••••••••••" : "••••••••••"}
-                className="w-full bg-transparent py-2 font-mono text-[12.5px] text-ink outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="text-ink-4 hover:text-ink"
-              >
-                {showPassword ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-              </button>
-            </div>
-          </label>
-        </div>
-
-        <p className="mt-3 flex items-start gap-1.5 border-t border-line-soft pt-2.5 text-[11px] leading-snug text-ink-4">
-          <ShieldCheck className="mt-px size-3.5 shrink-0 text-pine-600" />
-          Administrator credentials are encrypted and scoped strictly to your hotel property tenant.
-        </p>
+        <div className="flex items-center gap-2"><KeyRound className="size-4 text-pine-600" /><SectionTitle title="Manager account" hint="Your approved account is linked to this hotel." /></div>
+        <p className="mt-2 text-sm">{currentUser?.name} ? {currentUser?.email}</p>
       </Card>
 
       {/* Hotel Information Section */}

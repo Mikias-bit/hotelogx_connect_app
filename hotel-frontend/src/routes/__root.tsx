@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import { hydrateSession } from "@/lib/session";
+import { hasIdentityCallback } from '@/lib/identity';
 import appCss from "@/styles.css?url";
 
 export const Route = createRootRoute({
@@ -49,6 +50,10 @@ function NotFound() {
 
 function RootDocument() {
   useEffect(() => {
+    if (hasIdentityCallback() && window.location.pathname !== '/login') {
+      window.location.replace('/login' + window.location.hash);
+      return;
+    }
     hydrateSession();
 
     // Dynamically initialize Facebook SDK for Meta WhatsApp Embedded Signup if configured

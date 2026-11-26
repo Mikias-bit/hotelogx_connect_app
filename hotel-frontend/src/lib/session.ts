@@ -65,6 +65,9 @@ if (typeof window !== "undefined") {
 }
 
 export function signOut() {
+  if (typeof window !== 'undefined' && localStorage.getItem('hotelogx.authProvider') === 'netlify') {
+    void import('./identity').then(sdk => sdk.identityLogout()).catch(() => {});
+  }
   if (typeof window !== "undefined") {
     // Clear explicit authentication and user session keys
     window.localStorage.removeItem(KEY);

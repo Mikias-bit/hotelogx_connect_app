@@ -25,9 +25,9 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint.startsWith('/pms/guest-welcomes') || endpoint.startsWith('/pms/guest-messaging') || endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint === '/auth/request-access' || endpoint.startsWith('/pms/guest-welcomes') || endpoint.startsWith('/pms/guest-messaging') || endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
-  const publicAuth = endpoint === '/auth/login' || endpoint === '/auth/register';
+  const publicAuth = endpoint === '/auth/request-access' || endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
     const url = `${API_BASE_URL}${endpoint}`;
     const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
@@ -52,11 +52,19 @@ async function request<T>(endpoint: string, options: RequestInit = {}, isRetry =
       headers,
     });
 
-    if (res.status === 401 && !isRetry && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh')) {
+    if (res.status === 401 && !isRetry && !publicAuth && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh')) {
       const currentToken = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
       const sentToken = headers['Authorization']?.replace(/^Bearer /, '') || null;
       if (currentToken && currentToken === sentToken) {
         try {
+          if (localStorage.getItem('hotelogx.authProvider') === 'netlify') {
+            const fresh = await (await import('./identity')).exchangeIdentitySession();
+            if ([currentToken, fresh.token].includes(localStorage.getItem('token') || '')) {
+              localStorage.setItem('token', fresh.token);
+              return request<T>(endpoint, { ...options, headers: { ...headers, Authorization: `Bearer ${fresh.token}` } }, true);
+            }
+            throw new Error('The signed-in account changed.');
+          }
           const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${currentToken}` },
@@ -213,11 +221,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(credentials),
     }),
-  registerHotel: (data: { hotelName: string; managerName: string; email: string; password?: string; phone?: string }) =>
-    request<{ token: string; user: any; hotel: any }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+  requestAccess: (data: { name: string; hotelName: string; email: string }) =>
+    request<{ received: boolean }>('/auth/request-access', { method: 'POST', body: JSON.stringify(data) }),
   getMe: () => request<any>('/auth/me'),
 
   connectPms: (provider: string, propertyId: string, clientToken?: string) =>

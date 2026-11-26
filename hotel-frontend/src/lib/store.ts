@@ -1426,9 +1426,9 @@ export const selectors = {
   },
 };
 
-export async function initBackendSync() {
+export async function initBackendSync({ force = false }: { force?: boolean } = {}) {
   if (typeof window !== "undefined") {
-    if (window.location.pathname.startsWith("/login")) {
+    if (!force && window.location.pathname.startsWith("/login")) {
       return;
     }
     const token = window.localStorage.getItem("token");
@@ -1473,7 +1473,7 @@ export async function initBackendSync() {
     ]);
 
     const isOnboardingPage = typeof window !== "undefined" && window.location.pathname.startsWith("/onboarding");
-    const isFreshSetup = isOnboardingPage && !store.state.onboarding.complete;
+    const isFreshSetup = !force && isOnboardingPage && !store.state.onboarding.complete;
     const freshProfile = hotelProfileData || onboardingData?.hotelProfile || onboardingData?.hotel;
     if (freshProfile && (!isFreshSetup || onboardingData?.complete)) {
       set((s) => ({
@@ -1590,7 +1590,7 @@ export async function initBackendSync() {
     }
     if (onboardingData) {
       const isOnboardingPage = typeof window !== "undefined" && window.location.pathname.startsWith("/onboarding");
-      const isFreshSetup = isOnboardingPage && !store.state.onboarding.complete;
+      const isFreshSetup = !force && isOnboardingPage && !store.state.onboarding.complete;
       if (!isFreshSetup || onboardingData.complete) {
         const isPmsActuallyConnected = pmsStatusData?.status === "connected" || pmsStatusData?.connected === true || Boolean(onboardingData.done?.pms);
         const emailDone = Boolean(onboardingData.done?.email);
@@ -1654,8 +1654,10 @@ export async function initBackendSync() {
     if (waThreadsData && Array.isArray(waThreadsData)) {
       set(() => ({ waThreads: waThreadsData }));
     }
+    return Boolean(onboardingData?.hotelId && freshProfile);
   } catch (err) {
     console.warn("Backend sync failed:", err);
+    return false;
   }
 }
 
