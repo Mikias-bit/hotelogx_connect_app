@@ -25,7 +25,7 @@ function expireSession() {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}, isRetry = false): Promise<T | null> {
-  const strict = endpoint === '/auth/request-access' || endpoint.startsWith('/pms/guest-welcomes') || endpoint.startsWith('/pms/guest-messaging') || endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
+  const strict = endpoint.startsWith('/auth/access-management') || endpoint === '/auth/request-access' || endpoint.startsWith('/pms/guest-welcomes') || endpoint.startsWith('/pms/guest-messaging') || endpoint.startsWith('/shift-handovers') || endpoint === '/upsells/report' || endpoint.startsWith('/guest-handoffs') || (endpoint.startsWith('/conversations/') && (endpoint.endsWith('/resolve') || endpoint.endsWith('/takeover') || endpoint.endsWith('/reply'))) || endpoint.startsWith('/operational-blockers') || endpoint.startsWith('/room-readiness') || endpoint.startsWith('/maintenance-operations') || endpoint.startsWith('/lost-found') || endpoint.startsWith('/operations') || endpoint.startsWith('/pms/upsells') || endpoint.startsWith('/pms/requests') || endpoint.startsWith('/reports') || endpoint.startsWith('/whatsapp/') || endpoint === '/email/test-connection' || endpoint === '/email/disconnect' || endpoint === '/auth/login' || endpoint === '/auth/register' ||
     endpoint.startsWith('/email/oauth/google?') || endpoint.startsWith('/email/oauth/microsoft?') || (endpoint === '/onboarding/profile' && options.method === 'POST');
   const publicAuth = endpoint === '/auth/request-access' || endpoint === '/auth/login' || endpoint === '/auth/register';
   try {
@@ -134,6 +134,13 @@ async function invitationRequest<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  getAccessManagementPermission: () => request<{ allowed: boolean }>('/auth/access-management/permission'),
+  getAccessManagement: () => request<any>('/auth/access-management'),
+  approveHotelAccess: (input: { email: string; name: string; hotelName: string; hotelId?: string; linkExistingUser: boolean }) => request<any>('/auth/access-management/approve', { method: 'POST', body: JSON.stringify({ ...input, confirmed: true }) }),
+  sendHotelInvitation: (id: string) => request<any>(`/auth/access-management/invitations/${encodeURIComponent(id)}/send`, { method: 'POST', body: JSON.stringify({ confirmed: true }) }),
+  notifyAccessRequest: (id: string) => request<any>(`/auth/access-management/requests/${encodeURIComponent(id)}/notify`, { method: 'POST' }),
+  rejectAccessRequest: (id: string) => request<any>(`/auth/access-management/requests/${encodeURIComponent(id)}/reject`, { method: 'POST' }),
+
   getGuestWelcomes: () => request<WelcomeData>('/pms/guest-welcomes'),
   saveWelcomeConfig: (input: WelcomeConfig & { senderResponsibilityConfirmed: boolean }) => request('/pms/guest-welcomes/config', { method: 'PUT', body: JSON.stringify(input) }),
   recordWelcomeSent: (reservationId: string, stage: string) => request('/pms/guest-welcomes/record-external', { method: 'POST', body: JSON.stringify({ reservationId, stage, sentConfirmed: true }) }),

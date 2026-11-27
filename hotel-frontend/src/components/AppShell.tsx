@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { roleLabel, signOut, useCurrentUser, useSession } from "@/lib/session";
+import { api } from '@/lib/api';
 import { initBackendSync, selectors, useApp } from "@/lib/store";
 import { useRealtimeSync } from "@/lib/useRealtimeSync";
 import type { Role } from "@/lib/types";
@@ -88,6 +89,13 @@ export function AppShell({
   const hotel = useApp((s) => s.hotelProfile);
   const [mounted, setMounted] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const [operatorAccess, setOperatorAccess] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setOperatorAccess(false);
+    if (session.ready && user?.id) api.getAccessManagementPermission().then(result => { if (active) setOperatorAccess(result?.allowed === true); }).catch(() => {});
+    return () => { active = false; };
+  }, [session.ready, user?.id]);
   const conversationPage = pathname.startsWith('/front-office/conversations');
   const [expandedNav, setExpandedNav] = useState(false);
   const compactNav = conversationPage && !expandedNav;
@@ -101,6 +109,7 @@ export function AppShell({
 
   useEffect(() => {
     if (session.ready && !session.userId) {
+      if (pathname === '/manager/access-requests') sessionStorage.setItem('hotelogx.returnTo', pathname);
       navigate({ to: "/login", replace: true });
     } else if (session.ready && session.userId) {
       if (typeof initBackendSync === "function") {
@@ -123,7 +132,7 @@ export function AppShell({
   }
 
   const userRole = (user?.role && navByRole[user.role] ? user.role : "manager") as Role;
-  const nav = navByRole[userRole] || navByRole.manager;
+  const nav = [...(navByRole[userRole] || navByRole.manager), ...(operatorAccess ? [{ to: '/manager/access-requests', label: 'Access & invitations', icon: ClipboardList }] : [])];
   const counterFor = (label: string) => {
     if (label === "Conversations" && escalations) return { value: escalations, tone: "urgent" as const };
     if (label === "Tasks" && openTasks) return { value: openTasks, tone: "mute" as const };

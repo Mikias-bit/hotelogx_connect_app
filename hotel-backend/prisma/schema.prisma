@@ -1296,6 +1296,9 @@ model HotelOnboardingInvite {
   acceptedAt DateTime?
   identityId String? @unique
   revokedAt DateTime?
+  deliveryStatus String @default("pending")
+  deliveryAttemptAt DateTime?
+  deliveryMessageId String?
   @@index([hotelId])
 }
 
@@ -1306,4 +1309,6 @@ model HotelAccessRequest {
   hotelName String
   status String @default("pending")
   createdAt DateTime @default(now())
+  notificationStatus String @default("pending")
+  notificationAttemptAt DateTime?
 }

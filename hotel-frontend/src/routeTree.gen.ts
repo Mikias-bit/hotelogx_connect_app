@@ -26,6 +26,7 @@ import { Route as ManagerHandoverRouteImport } from './routes/manager.handover'
 import { Route as ManagerGuestMessagingRouteImport } from './routes/manager.guest-messaging'
 import { Route as ManagerFollowUpsRouteImport } from './routes/manager.follow-ups'
 import { Route as ManagerConversationsRouteImport } from './routes/manager.conversations'
+import { Route as ManagerAccessRequestsRouteImport } from './routes/manager.access-requests'
 import { Route as MaintenanceTasksRouteImport } from './routes/maintenance.tasks'
 import { Route as MaintenanceIssuesRouteImport } from './routes/maintenance.issues'
 import { Route as MaintenanceFollowUpsRouteImport } from './routes/maintenance.follow-ups'
@@ -127,6 +128,11 @@ const ManagerFollowUpsRoute = ManagerFollowUpsRouteImport.update({
 const ManagerConversationsRoute = ManagerConversationsRouteImport.update({
   id: '/manager/conversations',
   path: '/manager/conversations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManagerAccessRequestsRoute = ManagerAccessRequestsRouteImport.update({
+  id: '/manager/access-requests',
+  path: '/manager/access-requests',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MaintenanceTasksRoute = MaintenanceTasksRouteImport.update({
@@ -238,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/maintenance/follow-ups': typeof MaintenanceFollowUpsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
+  '/manager/access-requests': typeof ManagerAccessRequestsRoute
   '/manager/conversations': typeof ManagerConversationsRoute
   '/manager/follow-ups': typeof ManagerFollowUpsRoute
   '/manager/guest-messaging': typeof ManagerGuestMessagingRoute
@@ -274,6 +281,7 @@ export interface FileRoutesByTo {
   '/maintenance/follow-ups': typeof MaintenanceFollowUpsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
+  '/manager/access-requests': typeof ManagerAccessRequestsRoute
   '/manager/conversations': typeof ManagerConversationsRoute
   '/manager/follow-ups': typeof ManagerFollowUpsRoute
   '/manager/guest-messaging': typeof ManagerGuestMessagingRoute
@@ -311,6 +319,7 @@ export interface FileRoutesById {
   '/maintenance/follow-ups': typeof MaintenanceFollowUpsRoute
   '/maintenance/issues': typeof MaintenanceIssuesRoute
   '/maintenance/tasks': typeof MaintenanceTasksRoute
+  '/manager/access-requests': typeof ManagerAccessRequestsRoute
   '/manager/conversations': typeof ManagerConversationsRoute
   '/manager/follow-ups': typeof ManagerFollowUpsRoute
   '/manager/guest-messaging': typeof ManagerGuestMessagingRoute
@@ -349,6 +358,7 @@ export interface FileRouteTypes {
     | '/maintenance/follow-ups'
     | '/maintenance/issues'
     | '/maintenance/tasks'
+    | '/manager/access-requests'
     | '/manager/conversations'
     | '/manager/follow-ups'
     | '/manager/guest-messaging'
@@ -385,6 +395,7 @@ export interface FileRouteTypes {
     | '/maintenance/follow-ups'
     | '/maintenance/issues'
     | '/maintenance/tasks'
+    | '/manager/access-requests'
     | '/manager/conversations'
     | '/manager/follow-ups'
     | '/manager/guest-messaging'
@@ -421,6 +432,7 @@ export interface FileRouteTypes {
     | '/maintenance/follow-ups'
     | '/maintenance/issues'
     | '/maintenance/tasks'
+    | '/manager/access-requests'
     | '/manager/conversations'
     | '/manager/follow-ups'
     | '/manager/guest-messaging'
@@ -458,6 +470,7 @@ export interface RootRouteChildren {
   MaintenanceFollowUpsRoute: typeof MaintenanceFollowUpsRoute
   MaintenanceIssuesRoute: typeof MaintenanceIssuesRoute
   MaintenanceTasksRoute: typeof MaintenanceTasksRoute
+  ManagerAccessRequestsRoute: typeof ManagerAccessRequestsRoute
   ManagerConversationsRoute: typeof ManagerConversationsRoute
   ManagerFollowUpsRoute: typeof ManagerFollowUpsRoute
   ManagerGuestMessagingRoute: typeof ManagerGuestMessagingRoute
@@ -593,6 +606,13 @@ declare module '@tanstack/react-router' {
       path: '/manager/conversations'
       fullPath: '/manager/conversations'
       preLoaderRoute: typeof ManagerConversationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manager/access-requests': {
+      id: '/manager/access-requests'
+      path: '/manager/access-requests'
+      fullPath: '/manager/access-requests'
+      preLoaderRoute: typeof ManagerAccessRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/maintenance/tasks': {
@@ -738,6 +758,7 @@ const rootRouteChildren: RootRouteChildren = {
   MaintenanceFollowUpsRoute: MaintenanceFollowUpsRoute,
   MaintenanceIssuesRoute: MaintenanceIssuesRoute,
   MaintenanceTasksRoute: MaintenanceTasksRoute,
+  ManagerAccessRequestsRoute: ManagerAccessRequestsRoute,
   ManagerConversationsRoute: ManagerConversationsRoute,
   ManagerFollowUpsRoute: ManagerFollowUpsRoute,
   ManagerGuestMessagingRoute: ManagerGuestMessagingRoute,

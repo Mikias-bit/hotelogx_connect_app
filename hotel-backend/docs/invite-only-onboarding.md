@@ -1,12 +1,12 @@
 # Invite-only Hotelogx One onboarding
 
-Implemented locally on 26 November 2026. Deployment and a live Netlify invitation acceptance test are still required. This controls application accounts and hotel data; the public login and access-request pages remain visible.
+Updated locally on 27 November 2026 with operator email notifications and direct invitations. Deployment and a live notification/invitation acceptance test are still required. This controls application accounts and hotel data; the public login and access-request pages remain visible.
 
 ## Flow
 
-1. A prospective hotel submits **Request access** on `/login`. This saves a `HotelAccessRequest` in Neon. It does not create a user, issue a session, send email or grant access. Repeated requests for an email do not overwrite the original record.
-2. A trusted Hotelogx operator approves the hotel using the script below. It creates the hotel with incomplete onboarding and manual AI mode, and a pending `HotelOnboardingInvite` containing hotel ID, normalized email, manager name, role, approver and expiry. `manager` is the application's hotel-administrator role. Hotel managers cannot approve new tenants.
-3. The operator sends the same address an invitation from the configured Netlify Identity dashboard. Set the invitation path to `/login`. Netlify emails carry `#invite_token=...`; links landing at the app root are forwarded to login while preserving the fragment. Do not put tokens in query strings or logs.
+1. A prospective hotel submits **Request access** on `/login`. This saves a `HotelAccessRequest` in Neon and, when the operator mailbox is configured, emails **support@hotelogx.com** with a link to review it. It does not create a user, issue a session or grant access. Repeated requests for an email do not overwrite the original record or duplicate a recorded notification.
+2. A trusted Hotelogx operator opens **Access & invitations** (`/manager/access-requests`), reviews a pending request or fills in a direct invitation without any prior request, then explicitly approves. It creates the hotel with incomplete onboarding and manual AI mode, and a pending `HotelOnboardingInvite` containing hotel ID, normalized email, manager name, role, approver and expiry. `manager` is the application's hotel-administrator role. Hotel managers cannot approve new tenants unless separately allowlisted as Hotelogx operators. Opening an email link never approves anything.
+3. **Approve & send invitation** calls a protected Netlify function, which asks Identity to email the approved recipient their invitation link. Set the invitation path to `/login`. Netlify emails carry `#invite_token=...`; links landing at the app root are forwarded to login while preserving the fragment. Do not put tokens in query strings or logs. The command-line approval workflow below remains available; it records approval without sending automatically.
 4. The login page calls `handleAuthCallback()`, asks for a password, and calls `acceptInvite()`. Tokens are not saved in application onboarding records. The Identity SDK manages its own session cookies.
 5. Cloud Run validates the Identity bearer session by calling `GET https://<configured-site>/.netlify/identity/user`. It requires a verified email and an active approval. The hotel and role come exclusively from Neon, never browser claims, user-editable metadata or request fields.
 6. An atomic transaction attaches the Identity ID/issuer to the approved user and consumes the invitation. Repeated sign-ins reuse that exact mapping. Unknown identities, mismatched emails, expired/revoked approvals, cross-hotel accounts and role conflicts fail closed.
@@ -14,13 +14,50 @@ Implemented locally on 26 November 2026. Deployment and a live Netlify invitatio
 
 ## Deployment
 
-1. Apply the additive migration against the intended Neon database: from `hotel-backend`, run `npm run prisma:deploy`. New migration: `20261126010000_invite_only_identity`.
+1. Apply the additive migrations against the intended Neon database: from `hotel-backend`, run `npm run prisma:deploy`. These include `20261126010000_invite_only_identity` and `20261126020000_access_notifications`.
 2. Generate Prisma Client with `npm run prisma:generate`, then deploy Cloud Run with `NETLIFY_IDENTITY_SITE_URL=https://YOUR-CANONICAL-SITE`. Use only an HTTPS origin, without a path, credentials or query. This must be the same site serving the browser's Identity service. Missing configuration denies Identity access; there is no permissive fallback.
 3. Deploy the frontend. `hotel-frontend/netlify.toml` enables `VITE_NETLIFY_IDENTITY_ENABLED=true` and Node 22. If build settings override these values, set them in Netlify too. Keep the existing `VITE_API_BASE_URL` pointing at Cloud Run and its frontend CORS allowlist correct.
 4. Keep Netlify Identity registration **Invite only**, set its site URL to the canonical app origin, and configure the invitation email path as `/login`. Test on that HTTPS origin; a normal Vite localhost server and independent deploy-preview domains do not automatically provide the production Identity endpoint.
 5. Deploy backend and frontend together: old public signup is now always denied with HTTP 403, including when Identity configuration is absent. There is no public-signup environment switch.
 
 The Netlify SDK is `@netlify/identity`. Browser login does not grant hotel access without the independent Neon approval. [Netlify's invitation and callback documentation](https://docs.netlify.com/manage/security/secure-access-to-sites/identity/get-started/) describes the callback and password-acceptance steps.
+
+## Operator notifications and direct invitations setup
+
+Configure these **Cloud Run backend** environment variables. Credentials belong in Secret Manager and must never use a `VITE_` prefix.
+
+| Variable | Value |
+| --- | --- |
+| `HOTELOGX_OPERATOR_USER_IDS` | Comma-separated application User IDs of trusted Hotelogx operators. Not hotel IDs or Identity IDs. No account has this access by default. |
+| `ACCESS_REQUEST_NOTIFY_TO` | `support@hotelogx.com` (also the default). |
+| `ACCESS_SMTP_HOST` | SMTP hostname for the Hotelogx support mailbox. |
+| `ACCESS_SMTP_PORT` | `465` for implicit TLS, or `587` for required STARTTLS. |
+| `ACCESS_SMTP_USER` | Authenticated sending mailbox, typically `support@hotelogx.com`. |
+| `ACCESS_SMTP_PASSWORD` | Mailbox/app password, attached from Secret Manager. |
+| `ACCESS_SMTP_FROM` | Authorized sender address; defaults to `ACCESS_SMTP_USER`. |
+| `NETLIFY_IDENTITY_SITE_URL` | Canonical HTTPS frontend origin already used for Identity validation. |
+| `HOTELOGX_INVITE_BRIDGE_SECRET` | Independent random secret, at least 32 characters; store as a secret. |
+
+Find the existing operator's application ID using a read-only query in Neon, substituting their actual sign-in email (which may differ from the notification mailbox):
+
+```sql
+SELECT "id", "email", "role", "hotelId"
+FROM "User" WHERE lower("email") = lower('YOUR-OPERATOR-LOGIN-EMAIL');
+```
+
+In **Netlify environment variables**, add the exact same `HOTELOGX_INVITE_BRIDGE_SECRET` with Functions scope, and set `NETLIFY_IDENTITY_SITE_URL` to the same canonical origin. Do not expose the secret as a build-time frontend variable. Redeploy Netlify after changing function settings. The new `netlify/functions/hotel-invite.mjs` uses Netlify's server-supplied Identity operator context; it accepts only authenticated server calls and never returns the operator token. It calls the documented [GoTrue invitation endpoint](https://github.com/netlify/gotrue#endpoints).
+
+Once configured and deployed, sign in as an allowlisted operator. The menu shows **Access & invitations**. It is hidden from ordinary hotel staff and the backend independently rejects their access. The email review link returns to this page after login. You can:
+
+- Review a request, verify its hotel/name/email, and approve/send the invitation.
+- Invite a hotel directly by completing the same form without selecting a request.
+- Use an existing hotel ID to avoid creating a duplicate hotel.
+- Send notifications for older requests that are still `pending`, or send a newly approved invitation that was saved before invitation delivery was configured.
+- Decline a request and inspect notification/invitation status.
+
+Requests remain saved if notification configuration or SMTP delivery fails. `sent` means provider acceptance, not guaranteed inbox delivery. Sending records are claimed before external delivery so repeated submissions, clicks and concurrent workers cannot send duplicates. `sending`, `uncertain`, `failed` and `manual-review` records require a delivery check rather than automatic resend. Earlier approvals are migrated to `manual-review` because they may already have been invited through Netlify. Existing Identity accounts may require sign-in/recovery rather than another invite; the system does not create a second account automatically.
+
+There is no background notification retry worker in this update. After configuring SMTP, use **Send approval notification** for pending older requests. For failed/uncertain deliveries, verify SMTP/Netlify logs first; the operator can complete delivery manually. Do not clear a sending record without checking whether the message was accepted.
 
 ## Operator approval
 
@@ -66,6 +103,6 @@ This revokes only pending onboarding permission. It does not disable a previousl
 
 ## Validation and release check
 
-Run `node --test src/tests/identityAdmission.test.js src/tests/staffInvitation.test.js`, Prisma validation/generation, and frontend `npm run lint` / `npm run build`.
+Run `node --test src/tests/accessDelivery.test.js src/tests/identityAdmission.test.js src/tests/staffInvitation.test.js`, Prisma validation/generation, and frontend `npm run lint` / `npm run build`. Function tests use mocked Netlify context and HTTP responses; the deployed function and real mailbox still need a controlled end-to-end check.
 
 Before rollout, use a controlled test hotel/email to check: approved invitation acceptance; the correct hotel in the wizard; repeated login without duplicate users; unapproved Netlify identity denied; expired/revoked approval denied; public `/api/auth/register` denied; anonymous onboarding denied; existing manager and staff login; Identity session renewal; and sign-out. Local tests do not send real invitations or apply production migrations.

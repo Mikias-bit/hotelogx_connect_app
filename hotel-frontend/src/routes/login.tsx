@@ -45,6 +45,11 @@ function Login() {
     await signIn(result.user.id, result.user);
     if (!await initBackendSync({ force: true })) throw new Error('Your account is verified, but the hotel profile could not be loaded. Please sign in again to retry.');
     const needsSetup = result.user.role === 'manager' && !store.state.onboarding.complete;
+    if (sessionStorage.getItem('hotelogx.returnTo') === '/manager/access-requests') {
+      sessionStorage.removeItem('hotelogx.returnTo');
+      navigate({ to: '/manager/access-requests', replace: true });
+      return;
+    }
     navigate({ to: needsSetup ? '/onboarding' : roleHome[result.user.role as keyof typeof roleHome] || '/manager', replace: true });
   }
   useEffect(() => {

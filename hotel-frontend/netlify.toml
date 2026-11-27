@@ -1,6 +1,8 @@
 [build]
   command = "vite build"
   publish = "dist/client"
+[functions]
+  directory = "netlify/functions"
 [build.environment]
   NODE_VERSION = "22"
   VITE_NETLIFY_IDENTITY_ENABLED = "true"

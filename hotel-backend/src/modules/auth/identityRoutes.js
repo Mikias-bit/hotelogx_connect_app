@@ -3,8 +3,9 @@ import { prisma } from '../../config/database.js';
 import { signToken } from '../../utils/jwt.js';
 import { successResponse, errorResponse } from '../../utils/response.js';
 import { createIdentityAdmission } from './netlifyIdentity.js';
+import { createAccessDelivery } from './accessDelivery.js';
 
-export function createIdentityRouter({ db = prisma, admit = createIdentityAdmission({ db }), sign = signToken } = {}) {
+export function createIdentityRouter({ db = prisma, admit = createIdentityAdmission({ db }), sign = signToken, delivery = createAccessDelivery({ db }) } = {}) {
   const router = Router(), requests = new Map();
   router.use(['/identity', '/request-access'], (req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -27,8 +28,10 @@ export function createIdentityRouter({ db = prisma, admit = createIdentityAdmiss
     if (typeof name !== 'string' || !name.trim() || name.length > 120 || typeof hotelName !== 'string' || !hotelName.trim() || hotelName.length > 200
       || typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return errorResponse(res, 'Enter your name, hotel and work email.', 400);
     try {
-      await db.hotelAccessRequest.upsert({ where: { email: email.trim().toLowerCase() }, update: {},
+      const record = await db.hotelAccessRequest.upsert({ where: { email: email.trim().toLowerCase() }, update: {},
         create: { email: email.trim().toLowerCase(), name: name.trim(), hotelName: hotelName.trim() } });
+      // Request remains durable even when the operator mailbox is unavailable.
+      try { await delivery.notify(record.id); } catch { console.warn('Access request notification needs operator review'); }
       return successResponse(res, { received: true }, 'Your request has been recorded. Access requires approval.', 202);
     } catch { return errorResponse(res, 'Could not record your request. Please try again.', 503); }
   });
